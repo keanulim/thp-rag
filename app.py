@@ -7,7 +7,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
-# 1. PAGE CONFIG
 st.set_page_config(page_title="THP AI")
 st.title("THP AI")
 
@@ -24,42 +23,34 @@ def load_mappings():
 url_map = load_mappings()
 
 
-# 2. INITIALIZE CORE COMPONENTS
 @st.cache_resource
 def init_rag_chain():
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyDsLj0yy_yteK2ogFYgQ3_tQeEamXvG1l8"
-    os.environ["PINECONE_API_KEY"] = "pcsk_2jbfsh_8FZhtwiowGRGBfpvCQXvbeHRogdZF21raMqER6eVpwujTU64m8UMgGfBRQVtsNw"
+    os.environ["GOOGLE_API_KEY"] = "API_KEY"
+    os.environ["PINECONE_API_KEY"] = "API_KEY"
 
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     vectorstore = Pinecone(index_name="vetted-vertical", embedding=embeddings)
 
-    # Using the standard Flash model ID
     llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0.2)
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": 7})
 
-    # CRITICAL: We use 'context' and 'input' as the keys
     system_prompt = (
         "You are an Elite Vertical Jump Coach specializing in THP Strength and John Evans methodologies. "
         "Analyze the video transcripts provided below and give a technical answer.\n\n"
         "VIDEO CONTEXT:\n{context}"
     )
 
-    # Simplified ChatPromptTemplate
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
         ("human", "{input}"),
     ])
-
-    # This chain handles the 'stuffing' of documents into the 'context' variable
     combine_docs_chain = create_stuff_documents_chain(llm, prompt)
 
-    # This chain links the retriever to the LLM chain
     return create_retrieval_chain(retriever, combine_docs_chain)
 
 rag_chain = init_rag_chain()
 
-# --- SIDEBAR & DEBUGGER ---
 with st.sidebar:
     st.header("Settings")
     show_debug = st.checkbox("Show Raw Context (Debug)")
@@ -67,7 +58,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# 3. CHAT LOGIC
+#chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -85,7 +76,6 @@ if user_input := st.chat_input("Ask a technical training question..."):
             response = rag_chain.invoke({"input": user_input})
             answer = response.get("answer", "No response generated.")
 
-            # --- THE PROOF ---
             if show_debug:
                 with st.expander("🔬 Raw Pinecone Chunks"):
                     for i, doc in enumerate(response.get("context", [])):
