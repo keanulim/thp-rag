@@ -4,13 +4,11 @@ import time
 from google import genai
 from google.genai import types
 
-# --- NEW IMPORTS REQUIRED FOR RETRIES ---
 from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
 from google.genai.errors import ClientError
 
-# ---------------------------------------
 
-client = genai.Client(api_key="AIzaSyDsLj0yy_yteK2ogFYgQ3_tQeEamXvG1l8")
+client = genai.Client(api_key="API_KEY")
 
 COACH_FOLDERS = ["John_Evans", "THP_Strength"]
 
@@ -42,8 +40,6 @@ Your goal is to transform messy, auto-generated transcripts into a structured, h
 Return ONLY the raw JSON object.
 """
 
-
-# The decorator MUST be immediately above the function with no empty lines
 @retry(
     wait=wait_random_exponential(min=1, max=60),
     stop=stop_after_attempt(5),
@@ -77,22 +73,18 @@ def clean_and_tag_files():
                 raw_text = f.read()
 
             try:
-                # Use the retry-protected function
                 response = generate_refined_content(raw_text)
 
                 if not response or not response.text:
                     continue
 
-                # Sanitize response string (remove potential markdown junk)
                 clean_json_str = response.text.strip().replace('```json', '').replace('```', '')
                 parsed_json = json.loads(clean_json_str)
 
-                # Normalize to list
                 entries = [parsed_json] if isinstance(parsed_json, dict) else parsed_json
 
                 cleaned_entries = []
                 for entry in entries:
-                    # Logic to flatten and clean
                     if 'metadata' in entry:
                         entry.update(entry.pop('metadata'))
 
@@ -106,11 +98,11 @@ def clean_and_tag_files():
                 with open(output_path, 'w', encoding='utf-8') as f:
                     json.dump(cleaned_entries, f, indent=4)
 
-                print(f"✨ Refined: {filename}")
-                time.sleep(2)  # Small buffer
+                print(f"cleaned: {filename}")
+                time.sleep(2)  
 
             except Exception as e:
-                print(f"❌ Error processing {filename}: {e}")
+                print(f"error processing {filename}: {e}")
 
 
 if __name__ == "__main__":
