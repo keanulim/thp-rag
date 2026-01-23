@@ -5,9 +5,8 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from langchain_classic import hub
 import os
 
-# Set this once at the top - LangChain components will find it automatically
-os.environ["GOOGLE_API_KEY"] = "AIzaSyDsLj0yy_yteK2ogFYgQ3_tQeEamXvG1l8"
-os.environ["PINECONE_API_KEY"] = "pcsk_2jbfsh_8FZhtwiowGRGBfpvCQXvbeHRogdZF21raMqER6eVpwujTU64m8UMgGfBRQVtsNw"
+os.environ["GOOGLE_API_KEY"] = "API_KEY"
+os.environ["PINECONE_API_KEY"] = "API_KEY"
 # 1. Initialize the Brain & Ears
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
