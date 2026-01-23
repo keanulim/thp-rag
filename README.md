@@ -1,4 +1,5 @@
-Vetted Vertical
+**Vetted Vertical**
+
 A RAG-based search tool for vertical jump training. It uses Google Gemini and Pinecone to answer technical training questions based on transcripts from THP Strength and John Evans.
 
 How it works
@@ -27,3 +28,4 @@ Install requirements: uv pip install -r requirements.txt
 Run: streamlit run app.py
 
 Keanu Lim UC Berkeley
+
