@@ -1,0 +1,8 @@
+[theme]
+base = "dark"
+primaryColor = "#FF5F3D"
+backgroundColor = "#0B0B0C"
+secondaryBackgroundColor = "#1A1A1C"
+textColor = "#F2F2F2"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+baseFontSize = 14

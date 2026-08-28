@@ -1,28 +1,40 @@
 import os
 import json
 import time
+from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
 from google import genai
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-#clients
-pc = Pinecone(api_key="API_KEY")
-client = genai.Client(api_key="API_KEY")
+# 1. INITIALIZE CLIENTS
+load_dotenv()
 
-#pinecone index
+# 3. INITIALIZE CLIENTS USING ENV KEYS
+# These names must match what you wrote inside your .env file
+PINECONE_KEY = os.getenv("PINECONE_API_KEY")
+GEMINI_KEY = os.getenv("GOOGLE_API_KEY")
+
 INDEX_NAME = "vetted-vertical"
 
-if INDEX_NAME not in [idx.name for idx in pc.list_indexes()]:
-    pc.create_index(
-        name=INDEX_NAME,
-        dimension=768,
-        metric="cosine",
-        spec=ServerlessSpec(cloud="aws", region="us-east-1")
-    )
+pc = Pinecone(api_key=PINECONE_KEY)
+client = genai.Client(api_key=GEMINI_KEY)
+
+# 2. THE CLEAN SLATE (Crucial Step)
+if INDEX_NAME in [idx.name for idx in pc.list_indexes()]:
+    print(f"🗑️ Wiping existing index: {INDEX_NAME}...")
+    pc.delete_index(INDEX_NAME)
+
+print(f"🏗️ Creating fresh index: {INDEX_NAME}...")
+pc.create_index(
+    name=INDEX_NAME,
+    dimension=3072,
+    metric="cosine",
+    spec=ServerlessSpec(cloud="aws", region="us-east-1")
+)
 
 index = pc.Index(INDEX_NAME)
 
-#splitter
+# 3. LANGCHAIN SMART SPLITTER
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200,
@@ -36,77 +48,53 @@ def process_and_upload():
 
     for folder in folders:
         if not os.path.exists(folder):
-            print(f"📁 Folder {folder} not found, skipping...")
             continue
-            
-        coach_name = folder.replace("Cleaned_", "").replace("_", " ")
+
         files = sorted([f for f in os.listdir(folder) if f.endswith('.json')])
 
         for filename in files:
             clean_title = filename.replace('.json', '')
-
-          
-            first_chunk_id = f"{clean_title}_0"
-            try:
-                fetch_response = index.fetch(ids=[first_chunk_id])
-                if fetch_response and first_chunk_id in fetch_response['vectors']:
-                    print(f"skipping {filename} (Already in Pinecone)")
-                    continue
-            except Exception:
-                pass  
-                
             file_path = os.path.join(folder, filename)
+
             with open(file_path, 'r', encoding='utf-8') as f:
                 data_list = json.load(f)
 
-            print(f"🚀 Processing: {filename}...")
+            print(f"🚀 Indexing: {filename}...")
 
             for entry in data_list:
                 full_text = entry.get('cleaned_text', '')
-                if not full_text:
-                    continue
-
-                #chunkig
                 chunks = text_splitter.split_text(full_text)
 
                 for i, chunk in enumerate(chunks):
                     try:
+                        # --- THE FIX: USE THE SAME MODEL AS APP.PY ---
                         res = client.models.embed_content(
-                            model='text-embedding-004',
+                            model='gemini-embedding-001',
                             contents=chunk,
-                            config={'task_type': 'RETRIEVAL_DOCUMENT'}
+                            config={'task_type': 'RETRIEVAL_DOCUMENT'},
+
                         )
                         vector = res.embeddings[0].values
 
                         metadata = {
                             "text": chunk,
                             "video_title": clean_title,
-                            "topic": str(entry.get('primary_focus', 'Training')),
-                            "difficulty": str(entry.get('difficulty', 'Intermediate')),
-                            "is_injury_prevention": bool(entry.get('is_injury_prevention', False))
+                            "coach": folder.split('_')[1]  # "THP" or "John"
                         }
 
-                        stats = entry.get('stats', {})
-                        if isinstance(stats, dict):
-                            if stats.get('total_sets'): metadata['sets'] = stats['total_sets']
-                            if stats.get('reps_per_set'): metadata['reps'] = stats['reps_per_set']
-                            if stats.get('intensity_rpe'): metadata['rpe'] = stats['intensity_rpe']
-
-                        unique_id = f"{clean_title}_{i}"
                         index.upsert(vectors=[{
-                            "id": unique_id,
+                            "id": f"{clean_title}_{i}",
                             "values": vector,
                             "metadata": metadata
                         }])
 
-                        time.sleep(0.1)
+                        time.sleep(0.1)  # Respect Rate Limits
 
                     except Exception as e:
-                        print(f"error on chunk {i} of {filename}: {e}")
-                        time.sleep(2)  
-            print(f"successfully indexed: {filename}")
+                        print(f"❌ Error on {filename}: {e}")
+                        time.sleep(2)
 
 
 if __name__ == "__main__":
     process_and_upload()
-    print("\n synced.")
+    print("\n🏀 Knowledge Base is synced! Now run your auditor.")

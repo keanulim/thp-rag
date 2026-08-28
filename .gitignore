@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.claude/
+
+# Scraped/cleaned transcript data (regenerated via main.py / clean.py)
+Cleaned_John_Evans/
+Cleaned_THP_Strength/
+John_Evans/
+THP_Strength/
