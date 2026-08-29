@@ -1,8 +1,11 @@
 [theme]
 base = "dark"
-primaryColor = "#FF5F3D"
-backgroundColor = "#0B0B0C"
-secondaryBackgroundColor = "#1A1A1C"
+primaryColor = "#DC2626"
+backgroundColor = "#161616"
+secondaryBackgroundColor = "#222222"
 textColor = "#F2F2F2"
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+font = "General Sans:https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600&display=swap, sans-serif"
 baseFontSize = 14
+baseFontWeight = 300
+headingFontWeights = 500
+headingFontSizes = ["1.6rem", "1.3rem", "1.1rem", "1rem", "1rem", "0.9rem"]
