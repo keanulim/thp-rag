@@ -402,7 +402,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1585,7 +1585,7 @@ dependencies = [
     { name = "certifi" },
     { name = "tqdm" },
     { name = "typing-extensions" },
-    { name = "urllib3", marker = "python_full_version < '4'" },
+    { name = "urllib3" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/46/2a78df43128185ebc021df014ab3ee58d37cc7a35fe0523c441a76a5c77f/pinecone_client-3.2.2.tar.gz", hash = "sha256:887a12405f90ac11c396490f605fc479f31cf282361034d1ae0fccc02ac75bee", size = 113892, upload-time = "2024-03-29T23:38:42.475Z" }
 wheels = [
@@ -2307,18 +2307,6 @@ wheels = [
 ]
 
 [[package]]
-name = "scrapetube"
-version = "2.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-    { name = "typing-extensions" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/9f/a1a209c52605bc04499461f3e8ce05ab90a7f45b0f09b950e0a4e6b78a92/scrapetube-2.6.0-py3-none-any.whl", hash = "sha256:70077c2b80474896cd2490801d1ce33488bc8fb8ef9d2137f683a799ffac00af", size = 5874, upload-time = "2025-09-16T17:47:21.108Z" },
-]
-
-[[package]]
 name = "simsimd"
 version = "3.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2580,10 +2568,10 @@ dependencies = [
     { name = "langchainhub" },
     { name = "openai" },
     { name = "pinecone" },
-    { name = "scrapetube" },
     { name = "streamlit" },
     { name = "supabase" },
     { name = "youtube-transcript-api" },
+    { name = "yt-dlp" },
 ]
 
 [package.metadata]
@@ -2599,10 +2587,10 @@ requires-dist = [
     { name = "langchainhub", specifier = ">=0.1.21" },
     { name = "openai", specifier = ">=2.15.0" },
     { name = "pinecone", specifier = ">=8.0.0" },
-    { name = "scrapetube", specifier = ">=2.6.0" },
     { name = "streamlit", specifier = ">=1.53.0" },
     { name = "supabase", specifier = ">=2.31.0" },
     { name = "youtube-transcript-api", specifier = ">=1.2.3" },
+    { name = "yt-dlp", specifier = ">=2026.8.19" },
 ]
 
 [[package]]
@@ -3047,6 +3035,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/60/43/4104185a2eaa839daa693b30e15c37e7e58795e8e09ec414f22b3db54bec/youtube_transcript_api-1.2.4.tar.gz", hash = "sha256:b72d0e96a335df599d67cee51d49e143cff4f45b84bcafc202ff51291603ddcd", size = 469839, upload-time = "2026-01-29T09:09:17.088Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/95/129ea37efd6cd6ed00f62baae6543345c677810b8a3bf0026756e1d3cf3c/youtube_transcript_api-1.2.4-py3-none-any.whl", hash = "sha256:03878759356da5caf5edac77431780b91448fb3d8c21d4496015bdc8a7bc43ff", size = 485227, upload-time = "2026-01-29T09:09:15.427Z" },
+]
+
+[[package]]
+name = "yt-dlp"
+version = "2026.8.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e0/832fa4ca334b766a06933a196066edc3dba37cdb6f14cd98d59bcc69a4b4/yt_dlp-2026.8.19.tar.gz", hash = "sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1", size = 3052025, upload-time = "2026-08-19T23:48:59.291Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl", hash = "sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf", size = 3185533, upload-time = "2026-08-19T23:48:56.925Z" },
 ]
 
 [[package]]

@@ -17,15 +17,32 @@ client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 COACH_FOLDERS = ["John_Evans", "THP_Strength"]
 
 SYSTEM_PROMPT = """
-You are an expert Exercise Scientist and Data Engineer specializing in Vertical Jump Mechanics (specifically THP Strength and John Evans methodologies). 
-Your goal is to transform messy, auto-generated transcripts into a structured, high-fidelity JSON dataset.
+You are an expert Exercise Scientist and Data Engineer specializing in Vertical Jump Mechanics (specifically THP Strength and John Evans methodologies).
+Your goal is to lightly format messy, auto-generated transcripts and extract structured metadata from them — WITHOUT rewriting or paraphrasing the actual words.
 
 ### EXTRACTION RULES:
-1. CLEANING: Remove all 'narrative fluff'. 
-2. PUNCTUATION: Fix run-on sentences. 
-3. TERMINOLOGY: Capitalize 'Plyometrics', 'Isometrics', and 'RFD'.
-4. NUMERIC DATA: Extract exact numbers for Sets, Reps, and Intensity (RPE/RIR).
-5. METADATA: Every field must be populated according to the schema below.
+1. PUNCTUATION ONLY, NOT REWRITING: Add punctuation, capitalization, and paragraph breaks so the
+   transcript reads naturally. Do NOT remove, reorder, summarize, or paraphrase any content —
+   preserve the speaker's exact original wording, including tangents and filler. Only insert
+   punctuation marks, capitalize sentence starts/proper nouns, and break into paragraphs at natural
+   topic shifts. The output should be recognizable as the same words, just formatted.
+2. TERMINOLOGY: Capitalize 'Plyometrics', 'Isometrics', and 'RFD'.
+3. NUMERIC DATA: Extract exact numbers for Sets, Reps, and Intensity (RPE/RIR) into metadata (do not
+   alter numbers in the text itself).
+4. METADATA: Every field must be populated according to the schema below.
+5. SPEAKER ATTRIBUTION: These transcripts sometimes feature a guest or athlete speaking in first
+   person about their own training or results, not the channel's coach. Read the full transcript
+   and insert an inline tag "[SPEAKER: <name or role>]" immediately before each stretch of text
+   spoken by a different person than the one before it (e.g. use cues like self-introductions,
+   being addressed by name, or a host asking someone else about "your" results).
+   - Recurring guests/athletes to recognize by name if mentioned or self-introduced: Josh Ruble,
+     Dom Gonzales (also goes by "Dom Dunks"), Donovan Hawkins, Austin, Ben Moxness. If a stretch is
+     clearly one of these people, tag them by their name above (use "Dom Gonzales" as the canonical
+     name even if the transcript says "Dom Dunks").
+   - Do not tag every sentence — only tag at genuine speaker changes.
+   - If you cannot confidently tell who is speaking a given stretch, use "[SPEAKER: Uncertain]"
+     rather than guessing a name.
+   - If the whole transcript is clearly one person speaking throughout, one tag at the start is enough.
 
 ### SCHEMA:
 {
@@ -66,17 +83,19 @@ def clean_and_tag_files():
     for folder in COACH_FOLDERS:
         output_folder = f"Cleaned_{folder}"
         os.makedirs(output_folder, exist_ok=True)
-        files = [f for f in os.listdir(folder) if f.endswith('.txt')]
+        files = [f for f in os.listdir(folder) if f.endswith('.json')]
 
         for filename in files:
             input_path = os.path.join(folder, filename)
-            output_path = os.path.join(output_folder, filename.replace('.txt', '.json'))
+            output_path = os.path.join(output_folder, filename)
 
             if os.path.exists(output_path):
                 continue
 
             with open(input_path, 'r', encoding='utf-8') as f:
-                raw_text = f.read()
+                scraped = json.load(f)
+
+            raw_text = " ".join(segment["text"] for segment in scraped["segments"])
 
             try:
                 # Use the retry-protected function
@@ -102,7 +121,12 @@ def clean_and_tag_files():
                         entry['stats'] = entry.pop('quantitative_stats')
 
                     entry['coach'] = folder.replace('_', ' ')
-                    entry['source_filename'] = filename
+                    entry['video_id'] = scraped["video_id"]
+                    entry['video_title'] = scraped["title"]
+                    entry['is_generated_transcript'] = scraped["is_generated"]
+                    # Carried through so chunk.py can map cleaned/chunked text
+                    # back to an approximate original timestamp.
+                    entry['segments'] = scraped["segments"]
                     cleaned_entries.append(entry)
 
                 with open(output_path, 'w', encoding='utf-8') as f:

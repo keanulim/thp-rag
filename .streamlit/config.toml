@@ -6,6 +6,6 @@ secondaryBackgroundColor = "#222222"
 textColor = "#F2F2F2"
 font = "General Sans:https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600&display=swap, sans-serif"
 baseFontSize = 14
-baseFontWeight = 300
+baseFontWeight = 500
 headingFontWeights = 500
 headingFontSizes = ["1.6rem", "1.3rem", "1.1rem", "1rem", "1rem", "0.9rem"]

@@ -12,3 +12,7 @@ Cleaned_John_Evans/
 Cleaned_THP_Strength/
 John_Evans/
 THP_Strength/
+
+# Runtime skip logs from main.py / chunk.py
+scrape_skipped.json
+chunk_skipped.json

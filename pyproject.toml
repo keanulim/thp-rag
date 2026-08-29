@@ -16,10 +16,10 @@ dependencies = [
     "langchainhub>=0.1.21",
     "openai>=2.15.0",
     "pinecone>=8.0.0",
-    "scrapetube>=2.6.0",
     "streamlit>=1.53.0",
     "supabase>=2.31.0",
     "youtube-transcript-api>=1.2.3",
+    "yt-dlp>=2026.8.19",
 ]
 
 [tool.uv.workspace]

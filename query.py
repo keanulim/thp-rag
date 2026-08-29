@@ -1,30 +1,21 @@
-from dotenv import load_dotenv
-from langchain_pinecone import Pinecone
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_classic.chains import create_retrieval_chain
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_classic import hub
+"""Standalone CLI for testing the actual RAG chain used by app.py.
 
-load_dotenv()
-# 1. Initialize the Brain & Ears
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-001",
-    task_type="retrieval_query",
-)
-llm = ChatGoogleGenerativeAI(model="gemini-3.7-flash", temperature=0)
+Previously this built its own separate chain (generic hub prompt, no coach
+filter, no speaker-attribution guardrail, no metadata in context) — it had
+drifted completely out of sync with app.py and would give different,
+lower-quality answers than the real bot. Now it just calls the same
+query_rag() the app itself uses.
+"""
+import sys
+from app import query_rag
 
-# 2. Connect to the Index you just built
-vectorstore = Pinecone(index_name="vetted-vertical", embedding=embeddings)
+if __name__ == "__main__":
+    question = " ".join(sys.argv[1:]) or "How many sets should I do for each exercise?"
 
-# 3. Create the Retrieval Chain
-# This pulls the top 3 most relevant chunks from Pinecone
-retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
-retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
+    result = query_rag(question)
 
-combine_docs_chain = create_stuff_documents_chain(llm, retrieval_qa_chat_prompt)
-rag_chain = create_retrieval_chain(retriever, combine_docs_chain)
-
-# 4. Ask a Vetted Question
-response = rag_chain.invoke({"input": "how many sets should i do for each exercise?"})
-
-print(response["answer"])
+    print(f"Q: {question}\n")
+    print(f"A: {result['answer']}\n")
+    print(f"--- {len(result['context'])} chunks retrieved ---")
+    for i, chunk_text in enumerate(result["context"], 1):
+        print(f"\n[{i}] {chunk_text[:200]}...")
