@@ -16,3 +16,4 @@ THP_Strength/
 # Runtime skip logs from main.py / chunk.py
 scrape_skipped.json
 chunk_skipped.json
+title_gen_errors.log

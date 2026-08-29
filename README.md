@@ -18,7 +18,7 @@ Access is gated behind Google login, using Streamlit's built-in `st.login()` (OI
 
 **Saved chats (`app.py` + Supabase)**
 
-Every message is written to a `chat_messages` table in Supabase (Postgres), tagged with the user's email and a `chat_id` grouping messages into a single conversation. The sidebar shows your 15 most recent chats, each with a hover-revealed menu (⋮) to delete it; **See more** opens a full, searchable list of every chat. Logging in always starts a brand-new chat — it never auto-resumes your last conversation. Supabase is accessed only from the server side using a `service_role` key (never exposed to the browser), so Row Level Security isn't required for this table.
+Every message is written to a `chat_messages` table in Supabase (Postgres), tagged with the user's email and a `chat_id` grouping messages into a single conversation. As soon as you send a chat's first message, Gemini generates a short title for it (stored in `chat_titles`) so the sidebar shows something more useful than a truncated snippet of what you typed. The sidebar shows your 12 most recent chats plus up to 5 pinned chats above them, each with a hover-revealed menu (⋮) to pin/unpin or delete it; **View all conversations** opens a full, searchable list of every chat. Logging in always starts a brand-new chat — it never auto-resumes your last conversation. Supabase is accessed only from the server side using a `service_role` key (never exposed to the browser), so Row Level Security isn't required for these tables.
 
 **Data pipeline (run manually, not part of the live app)**
 
@@ -82,6 +82,23 @@ create table chat_messages (
 );
 create index chat_messages_user_email_idx on chat_messages (user_email);
 create index chat_messages_chat_id_idx on chat_messages (chat_id);
+
+create table pinned_chats (
+  id bigint generated always as identity primary key,
+  user_email text not null,
+  chat_id text not null,
+  pinned_at timestamptz not null default now(),
+  unique (user_email, chat_id)
+);
+create index pinned_chats_user_email_idx on pinned_chats (user_email);
+
+create table chat_titles (
+  chat_id text primary key,
+  user_email text not null,
+  title text not null,
+  created_at timestamptz not null default now()
+);
+create index chat_titles_user_email_idx on chat_titles (user_email);
 ```
 
 ## Project structure

@@ -35,29 +35,74 @@ def get_supabase():
     return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["service_key"])
 
 
-def load_history(email: str, chat_id: str) -> list[dict]:
+@st.cache_data(ttl=60)
+def load_all_histories(email: str) -> dict[str, list[dict]]:
+    """All of a user's messages in one query, grouped by chat_id — reused
+    for both the sidebar (via list_chats) and opening any individual chat,
+    so switching between chats doesn't cost a fresh round-trip per click.
+    """
     res = (
         get_supabase()
         .table("chat_messages")
-        .select("role, content")
+        .select("chat_id, role, content")
         .eq("user_email", email)
-        .eq("chat_id", chat_id)
         .order("id")
         .execute()
     )
-    return res.data or []
+    histories: dict[str, list[dict]] = {}
+    for row in res.data or []:
+        histories.setdefault(row["chat_id"], []).append(
+            {"role": row["role"], "content": row["content"]}
+        )
+    return histories
 
 
 def save_message(email: str, chat_id: str, role: str, content: str):
     get_supabase().table("chat_messages").insert(
         {"user_email": email, "chat_id": chat_id, "role": role, "content": content}
     ).execute()
+    load_all_histories.clear()
+    list_chats.clear()
 
 
 def delete_chat(email: str, chat_id: str):
     get_supabase().table("chat_messages").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    get_supabase().table("chat_titles").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    list_chats.clear()
+    list_pinned_chat_ids.clear()
+    load_all_histories.clear()
 
 
+MAX_PINNED_CHATS = 5
+
+
+@st.cache_data(ttl=60)
+def list_pinned_chat_ids(email: str) -> list[str]:
+    res = (
+        get_supabase()
+        .table("pinned_chats")
+        .select("chat_id")
+        .eq("user_email", email)
+        .order("pinned_at", desc=True)
+        .execute()
+    )
+    return [row["chat_id"] for row in (res.data or [])]
+
+
+def pin_chat(email: str, chat_id: str):
+    get_supabase().table("pinned_chats").insert(
+        {"user_email": email, "chat_id": chat_id}
+    ).execute()
+    list_pinned_chat_ids.clear()
+
+
+def unpin_chat(email: str, chat_id: str):
+    get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    list_pinned_chat_ids.clear()
+
+
+@st.cache_data(ttl=60)
 def list_chats(email: str) -> list[dict]:
     res = (
         get_supabase()
@@ -77,7 +122,59 @@ def list_chats(email: str) -> list[dict]:
         if chat["title"] is None and row["role"] == "user":
             content = row["content"]
             chat["title"] = content[:40] + ("…" if len(content) > 40 else "")
+
+    titles_res = (
+        get_supabase()
+        .table("chat_titles")
+        .select("chat_id, title")
+        .eq("user_email", email)
+        .execute()
+    )
+    for row in titles_res.data or []:
+        if row["chat_id"] in chats:
+            chats[row["chat_id"]]["title"] = row["title"]
+
     return sorted(chats.values(), key=lambda c: c["started_at"], reverse=True)
+
+
+def save_chat_title(email: str, chat_id: str, title: str):
+    get_supabase().table("chat_titles").upsert(
+        {"chat_id": chat_id, "user_email": email, "title": title}
+    ).execute()
+    list_chats.clear()
+
+
+@st.cache_resource
+def get_title_llm():
+    return ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0.3, max_output_tokens=30)
+
+
+def generate_chat_title(question: str) -> str:
+    fallback = question[:40] + ("…" if len(question) > 40 else "")
+    try:
+        prompt = (
+            "You're titling conversations in a vertical jump / dunk training chatbot, so every "
+            "message is already about that topic — don't restate it. Reply with exactly ONE "
+            "short chat title (3-6 words) capturing what's specifically being asked in this "
+            "message. Output only that single title — no alternatives, no bullets, no quotes, "
+            "no trailing punctuation:\n\n"
+            f"{question}"
+        )
+        raw_content = get_title_llm().invoke(prompt).content
+        if isinstance(raw_content, list):
+            raw_content = "".join(
+                part if isinstance(part, str) else part.get("text", "")
+                for part in raw_content
+            )
+        # Guard against the model still returning multiple lines/bullets despite
+        # the "exactly ONE title" instruction — take just the first non-empty one.
+        title = next((line.strip() for line in raw_content.splitlines() if line.strip()), "")
+        title = title.lstrip("*-•").strip().strip('"').strip()
+        return title[:60] if title else fallback
+    except Exception as e:
+        with open("title_gen_errors.log", "a") as f:
+            f.write(f"{e!r}\n")
+        return fallback
 
 
 # 2. RAG ENGINE (Importable Logic)
@@ -247,18 +344,45 @@ if __name__ == "__main__":
             color: #5C5C5C !important;
             font-weight: 300 !important;
         }
+        div[class*="st-key-chatrow-"] [data-testid="stHorizontalBlock"] {
+            align-items: stretch !important;
+        }
+        /* Force every wrapper between chatrow and the title button to
+           position:static, so the button's position:absolute below is
+           guaranteed to anchor to chatrow itself (which is what actually
+           gets the hover/selected highlight) — regardless of whatever
+           position Streamlit's own internal classes set on these. */
+        div[class*="st-key-chatrow-"] [data-testid="stLayoutWrapper"],
+        div[class*="st-key-chatrow-"] [data-testid="stHorizontalBlock"],
+        div[class*="st-key-chatrow-"] [data-testid="stColumn"],
+        div[class*="st-key-chatrow-"] [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
+        div[class*="st-key-chat-"],
+        div[class*="st-key-chat-"] .stButton {
+            position: static !important;
+        }
         div[class*="st-key-chat-"] button[data-testid="stBaseButton-secondary"] {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
+            z-index: 1;
             border-radius: 8px;
+            padding: 0px 8px !important;
+            min-height: 0 !important;
             transition: background-color 0.15s ease;
+            position: absolute !important;
+            inset: 0 !important;
+            display: flex !important;
+            align-items: center !important;
         }
         div[class*="st-key-chat-"] button[data-testid="stBaseButton-secondary"] > div {
             justify-content: flex-start;
         }
         div[class*="st-key-chat-"] button[data-testid="stBaseButton-secondary"] p {
             text-align: left;
+            color: #B0B0B0;
+            line-height: 1;
+            margin: 0 !important;
+            font-size: 0.9rem;
         }
         div[class*="st-key-chat-"] button[data-testid="stBaseButton-secondary"] p::before {
             content: "";
@@ -365,8 +489,67 @@ if __name__ == "__main__":
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .st-key-previous-chats-list {
+        .st-key-previous-chats-list,
+        .st-key-pinned-chats-list {
             gap: 0 !important;
+        }
+        .st-key-previous-chats-list [data-testid="stElementContainer"],
+        .st-key-pinned-chats-list [data-testid="stElementContainer"] {
+            margin-bottom: 0 !important;
+        }
+        .st-key-pinned-section,
+        .st-key-chats-section {
+            gap: 0 !important;
+        }
+        .st-key-pinned-section [data-testid="stElementContainer"],
+        .st-key-chats-section [data-testid="stElementContainer"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 4px 0 !important;
+            min-height: 0 !important;
+            justify-content: flex-start !important;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"] > div {
+            justify-content: flex-start !important;
+            align-items: center;
+            width: fit-content;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"] p {
+            font-size: 0.8rem;
+            font-weight: 340;
+            color: #8A8A8A;
+        }
+        div[class*="st-key-section-toggle-"] [data-testid="stIconMaterial"] {
+            display: none !important;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"] > div::after {
+            content: "▸";
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 16px;
+            line-height: 1;
+            color: #8A8A8A;
+            opacity: 0;
+            position: relative;
+            top: -1px;
+            left: 6px;
+            transition: opacity 0.15s ease;
+        }
+        div[class*="st-key-section-toggle-"][class*="-open"] button[data-testid="stBaseButton-secondary"] > div::after {
+            content: "▾";
+            top: -1px;
+            left: 6px;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"]:hover > div::after {
+            opacity: 1;
+        }
+        div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"]:hover p {
+            color: #B0B0B0 !important;
         }
         div[class*="st-key-menu-"] button[data-testid="stBaseButton-secondary"] {
             background: transparent !important;
@@ -388,9 +571,11 @@ if __name__ == "__main__":
         div[class*="st-key-chatrow-"] {
             border-radius: 8px;
             transition: background-color 0.15s ease;
+            position: relative;
         }
         div[class*="st-key-menuwrap-"] {
             position: relative;
+            z-index: 2;
         }
         div[class*="st-key-menucontent-"] {
             display: none;
@@ -438,6 +623,48 @@ if __name__ == "__main__":
             with st.chat_message(role):
                 yield
 
+    def render_chat_row(chat, user_email, is_pinned):
+        chat_id = chat["chat_id"]
+        is_current = chat_id == st.session_state.chat_id
+        label = chat["title"] or "(empty chat)"
+        with st.container(key=f"chatrow-{chat_id}"):
+            title_col, menu_col = st.columns([6, 1], vertical_alignment="center")
+            with title_col:
+                if st.button(label, key=f"chat-{chat_id}", use_container_width=True,
+                             disabled=is_current):
+                    st.session_state.chat_id = chat_id
+                    st.session_state.messages = None  # sentinel: not loaded yet
+                    st.session_state.view = "chat"
+                    st.rerun()
+            with menu_col:
+                # Menu visibility is handled purely by CSS (:focus-within on
+                # menuwrap below) — clicking elsewhere blurs the trigger and
+                # closes it natively, no session_state toggle needed.
+                with st.container(key=f"menuwrap-{chat_id}"):
+                    st.button("", key=f"menu-{chat_id}", icon=":material/more_vert:")
+                    with st.container(key=f"menucontent-{chat_id}"):
+                        if is_pinned:
+                            if st.button("Unpin", key=f"unpin-{chat_id}", icon=":material/keep_off:",
+                                         use_container_width=True):
+                                unpin_chat(user_email, chat_id)
+                                st.rerun()
+                        else:
+                            if st.button("Pin", key=f"pin-{chat_id}", icon=":material/push_pin:",
+                                         use_container_width=True):
+                                if len(list_pinned_chat_ids(user_email)) >= MAX_PINNED_CHATS:
+                                    st.toast(f"You can only pin up to {MAX_PINNED_CHATS} chats.",
+                                             icon=":material/error:")
+                                else:
+                                    pin_chat(user_email, chat_id)
+                                    st.rerun()
+                        if st.button("Delete", key=f"delete-{chat_id}", icon=":material/delete:",
+                                     use_container_width=True):
+                            delete_chat(user_email, chat_id)
+                            if is_current:
+                                st.session_state.chat_id = str(uuid.uuid4())
+                                st.session_state.messages = []
+                            st.rerun()
+
     # --- AUTH GATE ---
     try:
         auth_configured = "auth" in st.secrets
@@ -462,13 +689,21 @@ if __name__ == "__main__":
     user_email = st.user.email
     first_name = st.user.get("given_name") or st.user.get("name") or "Your"
 
-    rag_chain, retriever = init_rag_chain()
-
     # A fresh chat_id each time the session starts (e.g. on login) — never
     # auto-resumes a previous conversation.
     if "chat_id" not in st.session_state:
         st.session_state.chat_id = str(uuid.uuid4())
         st.session_state.messages = []
+
+    # A chat was just clicked into (see render_chat_row / all-chats search):
+    # fetch its messages *before* reconstructing the sidebar, so a chat that's
+    # already cached (the common case) resolves in this same pass with no
+    # extra round-trip — only a genuinely slow, uncached fetch shows a spinner.
+    if st.session_state.messages is None:
+        with st.spinner("Loading chat..."):
+            st.session_state.messages = load_all_histories(user_email).get(st.session_state.chat_id, [])
+
+    rag_chain, retriever = init_rag_chain()
 
     # "chat" = normal chat UI, "all_chats" = the full searchable chat list.
     if "view" not in st.session_state:
@@ -482,41 +717,45 @@ if __name__ == "__main__":
             st.session_state.view = "chat"
             st.rerun()
 
-        st.divider()
-        st.caption(f"{first_name}'s Chats")
-        with st.container(key="previous-chats-list"):
-            all_chats = list_chats(user_email)
-            for chat in all_chats[:15]:
-                is_current = chat["chat_id"] == st.session_state.chat_id
-                label = chat["title"] or "(empty chat)"
-                with st.container(key=f"chatrow-{chat['chat_id']}"):
-                    title_col, menu_col = st.columns([6, 1], vertical_alignment="center")
-                    with title_col:
-                        if st.button(label, key=f"chat-{chat['chat_id']}", use_container_width=True,
-                                     disabled=is_current):
-                            st.session_state.chat_id = chat["chat_id"]
-                            st.session_state.messages = load_history(user_email, chat["chat_id"])
-                            st.session_state.view = "chat"
-                            st.rerun()
-                    with menu_col:
-                        # Menu visibility is handled purely by CSS (:focus-within on
-                        # menuwrap below) — clicking elsewhere blurs the trigger and
-                        # closes it natively, no session_state toggle needed.
-                        with st.container(key=f"menuwrap-{chat['chat_id']}"):
-                            st.button("", key=f"menu-{chat['chat_id']}", icon=":material/more_vert:")
-                            with st.container(key=f"menucontent-{chat['chat_id']}"):
-                                if st.button("Delete", key=f"delete-{chat['chat_id']}", icon=":material/delete:",
-                                             use_container_width=True):
-                                    delete_chat(user_email, chat["chat_id"])
-                                    if is_current:
-                                        st.session_state.chat_id = str(uuid.uuid4())
-                                        st.session_state.messages = []
-                                    st.rerun()
+        all_chats = list_chats(user_email)
+        chats_by_id = {chat["chat_id"]: chat for chat in all_chats}
+        pinned_ids = [cid for cid in list_pinned_chat_ids(user_email) if cid in chats_by_id]
 
-            if len(all_chats) > 15:
-                if st.button("See more", key="see-more-chats"):
-                    st.session_state.view = "all_chats"
+        if "pinned_section_open" not in st.session_state:
+            st.session_state.pinned_section_open = True
+        if "chats_section_open" not in st.session_state:
+            st.session_state.chats_section_open = True
+
+        st.divider()
+
+        if pinned_ids:
+            with st.container(key="pinned-section"):
+                state = "open" if st.session_state.pinned_section_open else "closed"
+                with st.container(key=f"section-toggle-pinned-{state}"):
+                    if st.button("Pinned", key="toggle-pinned-section", use_container_width=True):
+                        st.session_state.pinned_section_open = not st.session_state.pinned_section_open
+                        st.rerun()
+                if st.session_state.pinned_section_open:
+                    with st.container(key="pinned-chats-list"):
+                        for chat_id in pinned_ids:
+                            render_chat_row(chats_by_id[chat_id], user_email, is_pinned=True)
+
+        with st.container(key="chats-section"):
+            state = "open" if st.session_state.chats_section_open else "closed"
+            with st.container(key=f"section-toggle-chats-{state}"):
+                if st.button(f"{first_name}'s Chats", key="toggle-chats-section", use_container_width=True):
+                    st.session_state.chats_section_open = not st.session_state.chats_section_open
                     st.rerun()
+            if st.session_state.chats_section_open:
+                with st.container(key="previous-chats-list"):
+                    unpinned_chats = [c for c in all_chats if c["chat_id"] not in pinned_ids]
+                    for chat in unpinned_chats[:12]:
+                        render_chat_row(chat, user_email, is_pinned=False)
+
+                    if len(unpinned_chats) > 12:
+                        if st.button("View all conversations", key="see-more-chats"):
+                            st.session_state.view = "all_chats"
+                            st.rerun()
 
         with st.container(key="sidebar-settings"):
             st.divider()
@@ -524,7 +763,6 @@ if __name__ == "__main__":
             st.caption(f"Signed in as {st.user.email}")
             if st.button("Log out"):
                 st.logout()
-            show_debug = st.checkbox("Show Raw Context (Debug)")
 
     # --- ALL CHATS (SEARCH) PAGE ---
     if st.session_state.view == "all_chats":
@@ -549,7 +787,7 @@ if __name__ == "__main__":
             label = chat["title"] or "(empty chat)"
             if st.button(label, key=f"allchat-{chat['chat_id']}", use_container_width=True):
                 st.session_state.chat_id = chat["chat_id"]
-                st.session_state.messages = load_history(user_email, chat["chat_id"])
+                st.session_state.messages = None  # sentinel: not loaded yet
                 st.session_state.view = "chat"
                 st.rerun()
 
@@ -575,12 +813,17 @@ if __name__ == "__main__":
 
             if hero_input:
                 # Clear the hero right now, in this same run, instead of relying
-                # on a rerun — a rerun only prunes it once the new run finishes,
-                # which left it on screen for the whole (slow) RAG call.
+                # on a rerun to prune it — that was slow and left stale content
+                # on screen for the whole RAG call. We still rerun immediately
+                # after saving the message (before generating a response) so
+                # the sidebar picks up this new chat right away, by send time,
+                # rather than only after the bot's reply finishes.
                 hero_placeholder.empty()
                 st.session_state.messages.append({"role": "user", "content": hero_input})
                 save_message(user_email, st.session_state.chat_id, "user", hero_input)
-                is_new_chat = False
+                title = generate_chat_title(hero_input)
+                save_chat_title(user_email, st.session_state.chat_id, title)
+                st.rerun()
 
         if not is_new_chat:
             for i, message in enumerate(st.session_state.messages):
@@ -610,12 +853,6 @@ if __name__ == "__main__":
                         apply_coach_filter(retriever, pending_question)
                         response = rag_chain.invoke({"input": pending_question, "chat_history": chat_history})
                         answer = response.get("answer", "No response generated.")
-
-                        if show_debug:
-                            with st.expander("🔬 Raw Pinecone Chunks"):
-                                for i, doc in enumerate(response.get("context", [])):
-                                    st.write(f"**Chunk {i + 1} from {doc.metadata.get('video_title')}**")
-                                    st.info(doc.page_content)
 
                         st.markdown(answer)
 
