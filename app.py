@@ -1,9 +1,12 @@
 import streamlit as st
 import os
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from dotenv import load_dotenv
 import json
+from supabase import create_client
+from streamlit.errors import StreamlitSecretNotFoundError
 from langchain_pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -24,6 +27,57 @@ def load_mappings():
 
 
 url_map = load_mappings()
+
+
+# 1b. PER-USER CHAT PERSISTENCE (Supabase)
+@st.cache_resource
+def get_supabase():
+    return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["service_key"])
+
+
+def load_history(email: str, chat_id: str) -> list[dict]:
+    res = (
+        get_supabase()
+        .table("chat_messages")
+        .select("role, content")
+        .eq("user_email", email)
+        .eq("chat_id", chat_id)
+        .order("id")
+        .execute()
+    )
+    return res.data or []
+
+
+def save_message(email: str, chat_id: str, role: str, content: str):
+    get_supabase().table("chat_messages").insert(
+        {"user_email": email, "chat_id": chat_id, "role": role, "content": content}
+    ).execute()
+
+
+def delete_chat(email: str, chat_id: str):
+    get_supabase().table("chat_messages").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+
+
+def list_chats(email: str) -> list[dict]:
+    res = (
+        get_supabase()
+        .table("chat_messages")
+        .select("chat_id, role, content, created_at")
+        .eq("user_email", email)
+        .order("created_at")
+        .execute()
+    )
+    chats: dict[str, dict] = {}
+    for row in res.data or []:
+        chat = chats.setdefault(row["chat_id"], {
+            "chat_id": row["chat_id"],
+            "title": None,
+            "started_at": row["created_at"],
+        })
+        if chat["title"] is None and row["role"] == "user":
+            content = row["content"]
+            chat["title"] = content[:40] + ("…" if len(content) > 40 else "")
+    return sorted(chats.values(), key=lambda c: c["started_at"], reverse=True)
 
 
 # 2. RAG ENGINE (Importable Logic)
@@ -139,18 +193,67 @@ if __name__ == "__main__":
             with st.chat_message(role):
                 yield
 
+    # --- AUTH GATE ---
+    try:
+        auth_configured = "auth" in st.secrets
+    except StreamlitSecretNotFoundError:
+        auth_configured = False
+
+    if not auth_configured:
+        st.error(
+            "Google login isn't configured yet. Copy "
+            "`.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` "
+            "and fill in your own values."
+        )
+        st.stop()
+
+    if not st.user.is_logged_in:
+        st.title("Dunk Bot")
+        st.write("Sign in with Google to start chatting.")
+        if st.button("Log in with Google"):
+            st.login()
+        st.stop()
+
+    user_email = st.user.email
+
     rag_chain = init_rag_chain()
 
-    if "messages" not in st.session_state:
+    # A fresh chat_id each time the session starts (e.g. on login) — never
+    # auto-resumes a previous conversation.
+    if "chat_id" not in st.session_state:
+        st.session_state.chat_id = str(uuid.uuid4())
         st.session_state.messages = []
 
     # --- SIDEBAR & DEBUGGER ---
     with st.sidebar:
         st.header("Settings")
+        st.caption(f"Signed in as {st.user.email}")
+        if st.button("Log out"):
+            st.logout()
         show_debug = st.checkbox("Show Raw Context (Debug)")
-        if st.button("Clear Chat History"):
+
+        st.divider()
+        if st.button("+ New Chat", use_container_width=True):
+            st.session_state.chat_id = str(uuid.uuid4())
             st.session_state.messages = []
             st.rerun()
+
+        if st.session_state.messages and st.button("Delete This Chat", use_container_width=True):
+            delete_chat(user_email, st.session_state.chat_id)
+            st.session_state.chat_id = str(uuid.uuid4())
+            st.session_state.messages = []
+            st.rerun()
+
+        st.divider()
+        st.caption("Previous Chats")
+        for chat in list_chats(user_email):
+            is_current = chat["chat_id"] == st.session_state.chat_id
+            label = chat["title"] or "(empty chat)"
+            if st.button(label, key=f"chat-{chat['chat_id']}", use_container_width=True,
+                         disabled=is_current):
+                st.session_state.chat_id = chat["chat_id"]
+                st.session_state.messages = load_history(user_email, chat["chat_id"])
+                st.rerun()
 
     # --- CHAT DISPLAY ---
     for i, message in enumerate(st.session_state.messages):
@@ -164,6 +267,7 @@ if __name__ == "__main__":
             for m in st.session_state.messages
         ]
         st.session_state.messages.append({"role": "user", "content": user_input})
+        save_message(user_email, st.session_state.chat_id, "user", user_input)
         with chat_bubble("user", "new"):
             st.markdown(user_input)
 
@@ -186,4 +290,5 @@ if __name__ == "__main__":
                         url = url_map.get(title, "https://www.youtube.com/@thpstrength1/videos")
                         st.markdown(f"🔗 [{title}]({url})")
 
+        save_message(user_email, st.session_state.chat_id, "assistant", answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
