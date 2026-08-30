@@ -99,6 +99,19 @@ create table chat_titles (
   created_at timestamptz not null default now()
 );
 create index chat_titles_user_email_idx on chat_titles (user_email);
+
+create table message_feedback (
+  id bigint generated always as identity primary key,
+  user_email text not null,
+  chat_id text not null,
+  message_index int not null,
+  question text,
+  answer text not null,
+  rating text not null check (rating in ('up', 'down')),
+  created_at timestamptz not null default now(),
+  unique (chat_id, message_index)
+);
+create index message_feedback_chat_id_idx on message_feedback (chat_id);
 ```
 
 ## Project structure

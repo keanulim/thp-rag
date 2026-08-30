@@ -29,6 +29,11 @@ def load_mappings():
 url_map = load_mappings()
 
 
+def _log_error(context: str, exc: Exception):
+    with open("app_errors.log", "a") as f:
+        f.write(f"[{context}] {exc!r}\n")
+
+
 # 1b. PER-USER CHAT PERSISTENCE (Supabase)
 @st.cache_resource
 def get_supabase():
@@ -41,14 +46,19 @@ def load_all_histories(email: str) -> dict[str, list[dict]]:
     for both the sidebar (via list_chats) and opening any individual chat,
     so switching between chats doesn't cost a fresh round-trip per click.
     """
-    res = (
-        get_supabase()
-        .table("chat_messages")
-        .select("chat_id, role, content")
-        .eq("user_email", email)
-        .order("id")
-        .execute()
-    )
+    try:
+        res = (
+            get_supabase()
+            .table("chat_messages")
+            .select("chat_id, role, content")
+            .eq("user_email", email)
+            .order("id")
+            .execute()
+        )
+    except Exception as e:
+        _log_error("load_all_histories", e)
+        st.toast("Couldn't load saved chats — Supabase is unreachable.", icon=":material/error:")
+        return {}
     histories: dict[str, list[dict]] = {}
     for row in res.data or []:
         histories.setdefault(row["chat_id"], []).append(
@@ -58,20 +68,32 @@ def load_all_histories(email: str) -> dict[str, list[dict]]:
 
 
 def save_message(email: str, chat_id: str, role: str, content: str):
-    get_supabase().table("chat_messages").insert(
-        {"user_email": email, "chat_id": chat_id, "role": role, "content": content}
-    ).execute()
+    try:
+        get_supabase().table("chat_messages").insert(
+            {"user_email": email, "chat_id": chat_id, "role": role, "content": content}
+        ).execute()
+    except Exception as e:
+        _log_error("save_message", e)
+        st.toast("This message wasn't saved — Supabase is unreachable.", icon=":material/error:")
+        return
     load_all_histories.clear()
     list_chats.clear()
 
 
 def delete_chat(email: str, chat_id: str):
-    get_supabase().table("chat_messages").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
-    get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
-    get_supabase().table("chat_titles").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    try:
+        get_supabase().table("chat_messages").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+        get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+        get_supabase().table("chat_titles").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+        get_supabase().table("message_feedback").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    except Exception as e:
+        _log_error("delete_chat", e)
+        st.toast("Couldn't delete this chat — Supabase is unreachable.", icon=":material/error:")
+        return
     list_chats.clear()
     list_pinned_chat_ids.clear()
     load_all_histories.clear()
+    load_feedback.clear()
 
 
 MAX_PINNED_CHATS = 5
@@ -79,39 +101,58 @@ MAX_PINNED_CHATS = 5
 
 @st.cache_data(ttl=60)
 def list_pinned_chat_ids(email: str) -> list[str]:
-    res = (
-        get_supabase()
-        .table("pinned_chats")
-        .select("chat_id")
-        .eq("user_email", email)
-        .order("pinned_at", desc=True)
-        .execute()
-    )
+    try:
+        res = (
+            get_supabase()
+            .table("pinned_chats")
+            .select("chat_id")
+            .eq("user_email", email)
+            .order("pinned_at", desc=True)
+            .execute()
+        )
+    except Exception as e:
+        _log_error("list_pinned_chat_ids", e)
+        return []
     return [row["chat_id"] for row in (res.data or [])]
 
 
 def pin_chat(email: str, chat_id: str):
-    get_supabase().table("pinned_chats").insert(
-        {"user_email": email, "chat_id": chat_id}
-    ).execute()
+    try:
+        get_supabase().table("pinned_chats").insert(
+            {"user_email": email, "chat_id": chat_id}
+        ).execute()
+    except Exception as e:
+        _log_error("pin_chat", e)
+        st.toast("Couldn't pin this chat — Supabase is unreachable.", icon=":material/error:")
+        return
     list_pinned_chat_ids.clear()
 
 
 def unpin_chat(email: str, chat_id: str):
-    get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    try:
+        get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
+    except Exception as e:
+        _log_error("unpin_chat", e)
+        st.toast("Couldn't unpin this chat — Supabase is unreachable.", icon=":material/error:")
+        return
     list_pinned_chat_ids.clear()
 
 
 @st.cache_data(ttl=60)
 def list_chats(email: str) -> list[dict]:
-    res = (
-        get_supabase()
-        .table("chat_messages")
-        .select("chat_id, role, content, created_at")
-        .eq("user_email", email)
-        .order("created_at")
-        .execute()
-    )
+    try:
+        res = (
+            get_supabase()
+            .table("chat_messages")
+            .select("chat_id, role, content, created_at")
+            .eq("user_email", email)
+            .order("created_at")
+            .execute()
+        )
+    except Exception as e:
+        _log_error("list_chats", e)
+        st.toast("Couldn't load your chat list — Supabase is unreachable.", icon=":material/error:")
+        return []
     chats: dict[str, dict] = {}
     for row in res.data or []:
         chat = chats.setdefault(row["chat_id"], {
@@ -123,25 +164,69 @@ def list_chats(email: str) -> list[dict]:
             content = row["content"]
             chat["title"] = content[:40] + ("…" if len(content) > 40 else "")
 
-    titles_res = (
-        get_supabase()
-        .table("chat_titles")
-        .select("chat_id, title")
-        .eq("user_email", email)
-        .execute()
-    )
-    for row in titles_res.data or []:
-        if row["chat_id"] in chats:
-            chats[row["chat_id"]]["title"] = row["title"]
+    try:
+        titles_res = (
+            get_supabase()
+            .table("chat_titles")
+            .select("chat_id, title")
+            .eq("user_email", email)
+            .execute()
+        )
+        for row in titles_res.data or []:
+            if row["chat_id"] in chats:
+                chats[row["chat_id"]]["title"] = row["title"]
+    except Exception as e:
+        _log_error("list_chats:titles", e)
 
     return sorted(chats.values(), key=lambda c: c["started_at"], reverse=True)
 
 
 def save_chat_title(email: str, chat_id: str, title: str):
-    get_supabase().table("chat_titles").upsert(
-        {"chat_id": chat_id, "user_email": email, "title": title}
-    ).execute()
+    try:
+        get_supabase().table("chat_titles").upsert(
+            {"chat_id": chat_id, "user_email": email, "title": title}
+        ).execute()
+    except Exception as e:
+        _log_error("save_chat_title", e)
+        return
     list_chats.clear()
+
+
+@st.cache_data(ttl=60)
+def load_feedback(chat_id: str) -> dict[int, str]:
+    """message_index -> 'up'/'down' for every rated assistant message in a chat."""
+    try:
+        res = (
+            get_supabase()
+            .table("message_feedback")
+            .select("message_index, rating")
+            .eq("chat_id", chat_id)
+            .execute()
+        )
+    except Exception as e:
+        _log_error("load_feedback", e)
+        return {}
+    return {row["message_index"]: row["rating"] for row in (res.data or [])}
+
+
+def save_feedback(email: str, chat_id: str, message_index: int, question: str, answer: str, rating: str):
+    try:
+        get_supabase().table("message_feedback").upsert(
+            {
+                "user_email": email,
+                "chat_id": chat_id,
+                "message_index": message_index,
+                "question": question,
+                "answer": answer,
+                "rating": rating,
+            },
+            on_conflict="chat_id,message_index",
+        ).execute()
+    except Exception as e:
+        _log_error("save_feedback", e)
+        st.toast("Couldn't save your feedback — Supabase is unreachable.", icon=":material/error:")
+        return
+    load_feedback.clear()
 
 
 @st.cache_resource
@@ -612,6 +697,24 @@ if __name__ == "__main__":
         .st-key-new-chat-hero [data-testid="stChatInput"] {
             max-width: 600px;
         }
+        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"],
+        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 2px 6px !important;
+            min-height: 0 !important;
+            opacity: 0.55;
+            transition: opacity 0.15s ease;
+        }
+        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"]:hover,
+        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"]:hover {
+            opacity: 1;
+        }
+        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"]:disabled,
+        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"]:disabled {
+            opacity: 1;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -622,6 +725,18 @@ if __name__ == "__main__":
         with st.container(key=f"row-{role}-{key_suffix}"):
             with st.chat_message(role):
                 yield
+
+    def render_feedback_buttons(user_email, chat_id, message_index, question, answer):
+        current = load_feedback(chat_id).get(message_index)
+        up_col, down_col, _ = st.columns([1, 1, 10])
+        with up_col:
+            if st.button("👍", key=f"fb-up-{chat_id}-{message_index}", disabled=current == "up"):
+                save_feedback(user_email, chat_id, message_index, question, answer, "up")
+                st.rerun()
+        with down_col:
+            if st.button("👎", key=f"fb-down-{chat_id}-{message_index}", disabled=current == "down"):
+                save_feedback(user_email, chat_id, message_index, question, answer, "down")
+                st.rerun()
 
     def render_chat_row(chat, user_email, is_pinned):
         chat_id = chat["chat_id"]
@@ -703,7 +818,15 @@ if __name__ == "__main__":
         with st.spinner("Loading chat..."):
             st.session_state.messages = load_all_histories(user_email).get(st.session_state.chat_id, [])
 
-    rag_chain, retriever = init_rag_chain()
+    try:
+        rag_chain, retriever = init_rag_chain()
+    except Exception as e:
+        _log_error("init_rag_chain", e)
+        st.error(
+            "Couldn't connect to the retrieval backend (Gemini/Pinecone). "
+            "Please try again shortly."
+        )
+        st.stop()
 
     # "chat" = normal chat UI, "all_chats" = the full searchable chat list.
     if "view" not in st.session_state:
@@ -829,6 +952,13 @@ if __name__ == "__main__":
             for i, message in enumerate(st.session_state.messages):
                 with chat_bubble(message["role"], i):
                     st.markdown(message["content"])
+                if message["role"] == "assistant":
+                    preceding_question = (
+                        st.session_state.messages[i - 1]["content"] if i > 0 else ""
+                    )
+                    render_feedback_buttons(
+                        user_email, st.session_state.chat_id, i, preceding_question, message["content"]
+                    )
 
             user_input = st.chat_input("Ask a technical training question...", key="chat_input_bottom")
 
@@ -850,24 +980,40 @@ if __name__ == "__main__":
 
                 with chat_bubble("assistant", "new"):
                     with st.spinner("Retrieving video data..."):
-                        apply_coach_filter(retriever, pending_question)
-                        response = rag_chain.invoke({"input": pending_question, "chat_history": chat_history})
-                        answer = response.get("answer", "No response generated.")
+                        try:
+                            apply_coach_filter(retriever, pending_question)
+                            response = rag_chain.invoke(
+                                {"input": pending_question, "chat_history": chat_history}
+                            )
+                            answer = response.get("answer") or "No response generated."
+                        except Exception as e:
+                            _log_error("query_rag", e)
+                            st.error(
+                                "Something went wrong generating a response. "
+                                "Please try sending your question again."
+                            )
+                        else:
+                            st.markdown(answer)
 
-                        st.markdown(answer)
+                            with st.expander("Sources & References"):
+                                for doc in response.get("context", []):
+                                    title = doc.metadata.get("video_title", "Untitled Video")
+                                    video_id = doc.metadata.get("video_id")
+                                    start_time = doc.metadata.get("start_time")
 
-                        with st.expander("Sources & References"):
-                            for doc in response.get("context", []):
-                                title = doc.metadata.get("video_title", "Untitled Video")
-                                video_id = doc.metadata.get("video_id")
-                                start_time = doc.metadata.get("start_time")
+                                    if video_id and start_time is not None:
+                                        url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
+                                    else:
+                                        url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
 
-                                if video_id and start_time is not None:
-                                    url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
-                                else:
-                                    url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
+                                    st.markdown(f"🔗 [{title}]({url})")
 
-                                st.markdown(f"🔗 [{title}]({url})")
-
-                save_message(user_email, st.session_state.chat_id, "assistant", answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+                            save_message(user_email, st.session_state.chat_id, "assistant", answer)
+                            st.session_state.messages.append({"role": "assistant", "content": answer})
+                            render_feedback_buttons(
+                                user_email,
+                                st.session_state.chat_id,
+                                len(st.session_state.messages) - 1,
+                                pending_question,
+                                answer,
+                            )

@@ -17,3 +17,4 @@ THP_Strength/
 scrape_skipped.json
 chunk_skipped.json
 title_gen_errors.log
+app_errors.log
