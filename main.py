@@ -4,6 +4,7 @@ import time
 import random
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import RequestBlocked
 
 CHANNELS = {
     "THP_Strength": "thpstrength1",
@@ -102,9 +103,18 @@ def download_transcripts():
                 kind = "auto-generated" if fetched_data.is_generated else "manual"
                 print(f"success ({kind}): {title}")
 
+            except RequestBlocked as e:
+                # Covers both RequestBlocked and its IpBlocked subclass — the
+                # actual exception youtube_transcript_api raises when YouTube
+                # blocks this IP. The message text never contains the string
+                # "RequestBlocked", so a substring check against str(e) (the
+                # previous approach) never matched and this backoff never ran.
+                print(f"IP blocked by YouTube ({type(e).__name__}), waiting 2 minutes")
+                time.sleep(120)
+                log_skip(skipped, video_id, title, f"{type(e).__name__}_gave_up_this_pass")
             except Exception as e:
                 reason = str(e)
-                if "429" in reason or "RequestBlocked" in reason:
+                if "429" in reason:
                     print("rate limit, waiting 2 minutes")
                     time.sleep(120)
                     log_skip(skipped, video_id, title, "rate_limited_gave_up_this_pass")

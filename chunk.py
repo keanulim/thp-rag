@@ -12,6 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 SPEAKER_TAG_RE = re.compile(r'^\[SPEAKER:[^\]]*\]\s*')
 SKIP_LOG = "chunk_skipped.json"
+CHUNKED_STATE_FILE = "chunked_files.json"
 
 # 1. INITIALIZE CLIENTS
 load_dotenv()
@@ -61,6 +62,22 @@ def log_skip(skipped, video_id, chunk_index, reason):
     skipped.append({"video_id": video_id, "chunk_index": chunk_index, "reason": reason})
     with open(SKIP_LOG, "w", encoding="utf-8") as f:
         json.dump(skipped, f, indent=2)
+
+
+def load_chunked_files() -> set[str]:
+    """Cleaned_*/filename.json keys already embedded and upserted into the
+    live index — lets repeat runs only process newly-cleaned videos instead
+    of re-embedding (and re-billing) everything each time."""
+    if os.path.exists(CHUNKED_STATE_FILE):
+        with open(CHUNKED_STATE_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    return set()
+
+
+def mark_chunked(chunked_files: set[str], key: str):
+    chunked_files.add(key)
+    with open(CHUNKED_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(sorted(chunked_files), f, indent=2)
 
 
 @retry(
@@ -187,6 +204,7 @@ def flatten_extracted_metadata(entry):
 def process_and_upload(index):
     folders = ["Cleaned_THP_Strength", "Cleaned_John_Evans"]
     skipped = load_skip_log()
+    chunked_files = load_chunked_files()
 
     for folder in folders:
         if not os.path.exists(folder):
@@ -195,6 +213,10 @@ def process_and_upload(index):
         files = sorted([f for f in os.listdir(folder) if f.endswith('.json')])
 
         for filename in files:
+            state_key = f"{folder}/{filename}"
+            if state_key in chunked_files:
+                continue
+
             file_path = os.path.join(folder, filename)
 
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -248,8 +270,34 @@ def process_and_upload(index):
                         log_skip(skipped, video_id, i, str(e)[:200])
                         time.sleep(2)
 
+            mark_chunked(chunked_files, state_key)
+
+
+def get_or_create_index():
+    if INDEX_NAME not in [idx.name for idx in pc.list_indexes()]:
+        print(f"🏗️ Creating index: {INDEX_NAME}...")
+        pc.create_index(
+            name=INDEX_NAME,
+            dimension=3072,
+            metric="cosine",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1")
+        )
+    return pc.Index(INDEX_NAME)
+
 
 if __name__ == "__main__":
-    live_index = setup_index()
+    import sys
+
+    # Default: incremental — only embeds/upserts videos not already recorded
+    # in chunked_files.json, and never touches existing vectors. Pass
+    # --rebuild to wipe the index and re-embed everything from scratch (e.g.
+    # after a metadata schema change).
+    if "--rebuild" in sys.argv:
+        live_index = setup_index()
+        if os.path.exists(CHUNKED_STATE_FILE):
+            os.remove(CHUNKED_STATE_FILE)
+    else:
+        live_index = get_or_create_index()
+
     process_and_upload(live_index)
     print("\n🏀 Knowledge Base is synced! Now run your auditor.")

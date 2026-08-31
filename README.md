@@ -20,16 +20,27 @@ Access is gated behind Google login, using Streamlit's built-in `st.login()` (OI
 
 Every message is written to a `chat_messages` table in Supabase (Postgres), tagged with the user's email and a `chat_id` grouping messages into a single conversation. As soon as you send a chat's first message, Gemini generates a short title for it (stored in `chat_titles`) so the sidebar shows something more useful than a truncated snippet of what you typed. The sidebar shows your 12 most recent chats plus up to 5 pinned chats above them, each with a hover-revealed menu (⋮) to pin/unpin or delete it; **View all conversations** opens a full, searchable list of every chat. Logging in always starts a brand-new chat — it never auto-resumes your last conversation. Supabase is accessed only from the server side using a `service_role` key (never exposed to the browser), so Row Level Security isn't required for these tables.
 
-**Data pipeline (run manually, not part of the live app)**
+**Data pipeline (automated daily, separate from the live app)**
 
-The chatbot's knowledge comes from a one-time (or occasional) ingestion pipeline:
+The chatbot's knowledge comes from an ingestion pipeline, run automatically once a day via a macOS `launchd` job (`com.thprag.ingest`, see below) so newly-uploaded videos get added without manual intervention:
 
-1. `main.py` — lists each channel's videos via `yt-dlp` and fetches each transcript via `youtube_transcript_api`, saving one JSON file per video (`{folder}/{video_id}.json`) with the raw timestamped segments, title, and whether the transcript was manual or auto-generated. Failures (rate limits, disabled captions, etc.) are logged to `scrape_skipped.json` instead of being silently dropped.
-2. `clean.py` — sends each transcript to Gemini to add punctuation/capitalization and tag speaker changes inline (`[SPEAKER: <name>]`) — it preserves the original wording rather than rewriting it, and also extracts structured metadata (focus, exercises, sets/reps/RPE, difficulty, etc.) as JSON.
-3. `chunk.py` — wipes and rebuilds the Pinecone index, splits each cleaned transcript into overlapping chunks, estimates a timestamp for each chunk by matching it back against the original transcript segments, embeds each chunk, and upserts it to Pinecone along with the extracted metadata. Embedding failures are retried and logged to `chunk_skipped.json`.
+1. `main.py` — lists each channel's videos via `yt-dlp` and fetches each transcript via `youtube_transcript_api`, saving one JSON file per video (`{folder}/{video_id}.json`) with the raw timestamped segments, title, and whether the transcript was manual or auto-generated. Already-downloaded videos (by `video_id`) are skipped, so re-runs only fetch what's new. Failures (rate limits, disabled captions, etc.) are logged to `scrape_skipped.json` instead of being silently dropped. YouTube IP-blocking (`RequestBlocked`/`IpBlocked`) triggers a 2-minute backoff; if it's persistent it can take a few hours to clear.
+2. `clean.py` — sends each transcript to Gemini to add punctuation/capitalization and tag speaker changes inline (`[SPEAKER: <name>]`) — it preserves the original wording rather than rewriting it, and also extracts structured metadata (focus, exercises, sets/reps/RPE, difficulty, etc.) as JSON. Already-cleaned videos are skipped.
+3. `chunk.py` — splits each cleaned transcript into overlapping chunks, estimates a timestamp for each chunk by matching it back against the original transcript segments, embeds each chunk, and upserts it to Pinecone along with the extracted metadata. Videos already recorded in `chunked_files.json` are skipped, so repeat runs only embed (and bill) newly-cleaned videos — **by default it never wipes the live index**. Pass `--rebuild` to wipe and re-embed everything from scratch (e.g. after a metadata schema change); this does cause a gap in answers while it rebuilds. Embedding failures are retried and logged to `chunk_skipped.json`.
 4. `script.py` — builds `youtube_links.json`, mapping each video's ID to its YouTube URL (used as a fallback source link when a chunk has no matched timestamp).
 
-Re-run steps 1–4 (in order) whenever new videos should be added to the bot's knowledge base. Note step 3 wipes the live Pinecone index the running app queries — expect a gap in answers while it rebuilds.
+`ingest.py` runs steps 1–4 in order and is what the scheduled job invokes; run it manually (`.venv/bin/python ingest.py`) any time you want to check for new videos immediately instead of waiting for the schedule. The `launchd` job is installed at `~/Library/LaunchAgents/com.thprag.ingest.plist`, runs daily at 4:00 AM, and logs to `logs/ingest.log`. Useful commands:
+
+```bash
+# check status / see if it's currently running
+launchctl print gui/$(id -u)/com.thprag.ingest
+
+# trigger it immediately instead of waiting for 4am
+launchctl kickstart gui/$(id -u)/com.thprag.ingest
+
+# stop it from running automatically
+launchctl bootout gui/$(id -u)/com.thprag.ingest
+```
 
 `query.py` is a standalone CLI for testing the exact same RAG chain the live app uses (`python query.py "your question"`).
 
@@ -119,6 +130,7 @@ create index message_feedback_chat_id_idx on message_feedback (chat_id);
 | File | Purpose |
 |---|---|
 | `app.py` | Streamlit chat UI + RAG chain + Google auth + saved chats |
+| `ingest.py` | Runs the full pipeline (steps 1–4 below) in order; invoked daily by `launchd` |
 | `main.py` | Scrapes raw YouTube transcripts (channel listing + captions) |
 | `clean.py` | Punctuates transcripts and tags speakers via Gemini |
 | `chunk.py` | Chunks, timestamps, embeds, and upserts to Pinecone |
