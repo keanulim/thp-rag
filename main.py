@@ -46,6 +46,10 @@ def log_skip(skipped, video_id, title, reason):
         json.dump(skipped, f, indent=2)
 
 
+BASE_BLOCK_BACKOFF = 120  # seconds
+MAX_BLOCK_BACKOFF = 1200  # 20 minutes
+
+
 def download_transcripts():
     ytt_api = YouTubeTranscriptApi()
     skipped = load_skip_log()
@@ -56,6 +60,12 @@ def download_transcripts():
 
         videos = get_channel_videos(handle)
         print(f"Found {len(videos)} videos")
+
+        # Doubles on each consecutive block (2, 4, 8, 16, 20-cap min) instead
+        # of always waiting a flat 2 minutes — a real IP ban doesn't clear in
+        # 2 minutes, so hammering it on that fixed cadence barely counts as
+        # backing off. Resets the moment a request actually succeeds.
+        consecutive_blocks = 0
 
         for i, video in enumerate(videos):
             video_id = video["videoId"]
@@ -69,11 +79,11 @@ def download_transcripts():
                 print(f"⏭️ Skipping (already exists): {title}")
                 continue
 
-            if i > 0 and i % 10 == 0:
-                print("☕ Batch complete. Taking a 5-minute break...")
-                time.sleep(300)
+            if i > 0 and i % 8 == 0:
+                print("☕ Batch complete. Taking an 8-minute break...")
+                time.sleep(480)
 
-            wait_time = random.uniform(10.0, 25.0)
+            wait_time = random.uniform(15.0, 30.0)
             print(f"Waiting {wait_time:.1f}s...")
             time.sleep(wait_time)
 
@@ -102,6 +112,7 @@ def download_transcripts():
 
                 kind = "auto-generated" if fetched_data.is_generated else "manual"
                 print(f"success ({kind}): {title}")
+                consecutive_blocks = 0
 
             except RequestBlocked as e:
                 # Covers both RequestBlocked and its IpBlocked subclass — the
@@ -109,14 +120,19 @@ def download_transcripts():
                 # blocks this IP. The message text never contains the string
                 # "RequestBlocked", so a substring check against str(e) (the
                 # previous approach) never matched and this backoff never ran.
-                print(f"IP blocked by YouTube ({type(e).__name__}), waiting 2 minutes")
-                time.sleep(120)
+                consecutive_blocks += 1
+                backoff = min(BASE_BLOCK_BACKOFF * (2 ** (consecutive_blocks - 1)), MAX_BLOCK_BACKOFF)
+                print(f"IP blocked by YouTube ({type(e).__name__}), waiting {backoff / 60:.1f} min "
+                      f"(consecutive block #{consecutive_blocks})")
+                time.sleep(backoff)
                 log_skip(skipped, video_id, title, f"{type(e).__name__}_gave_up_this_pass")
             except Exception as e:
                 reason = str(e)
                 if "429" in reason:
-                    print("rate limit, waiting 2 minutes")
-                    time.sleep(120)
+                    consecutive_blocks += 1
+                    backoff = min(BASE_BLOCK_BACKOFF * (2 ** (consecutive_blocks - 1)), MAX_BLOCK_BACKOFF)
+                    print(f"rate limit, waiting {backoff / 60:.1f} min (consecutive block #{consecutive_blocks})")
+                    time.sleep(backoff)
                     log_skip(skipped, video_id, title, "rate_limited_gave_up_this_pass")
                 else:
                     print(f"skipping {video_id}: {reason[:50]}...")

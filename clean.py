@@ -70,7 +70,7 @@ Return ONLY the raw JSON object.
 )
 def generate_refined_content(raw_text):
     return client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-3.7-flash',
         contents=raw_text,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
