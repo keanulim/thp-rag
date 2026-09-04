@@ -472,6 +472,7 @@ if __name__ == "__main__":
             line-height: 1;
             margin: 0 !important;
             font-size: 0.9rem;
+            font-weight: 300 !important;
         }
         div[class*="st-key-chat-"] button[data-testid="stBaseButton-secondary"] p::before {
             content: "";
