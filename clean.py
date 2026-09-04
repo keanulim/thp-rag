@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import httpx
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -10,6 +11,13 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_i
 from google.genai.errors import ClientError
 
 # ---------------------------------------
+
+# Without an explicit timeout, a dropped/stalled connection (e.g. after the
+# machine wakes from sleep, or a network blip) hangs the request forever —
+# no exception is ever raised, so nothing here retries and the whole
+# pipeline just sits stuck indefinitely. 120s is generous for a single
+# cleaning call but still bounds the worst case.
+REQUEST_TIMEOUT_MS = 120_000
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -66,7 +74,7 @@ Return ONLY the raw JSON object.
 @retry(
     wait=wait_random_exponential(min=1, max=60),
     stop=stop_after_attempt(5),
-    retry=retry_if_exception_type(ClientError)
+    retry=retry_if_exception_type((ClientError, httpx.TimeoutException))
 )
 def generate_refined_content(raw_text):
     return client.models.generate_content(
@@ -75,6 +83,7 @@ def generate_refined_content(raw_text):
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type='application/json',
+            http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
         )
     )
 
