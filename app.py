@@ -592,17 +592,33 @@ if __name__ == "__main__":
             background-color: #121212 !important;
             border-right: 0.5px solid #333333;
             min-width: 260px !important;
+            position: relative;
         }
-        /* stLogoSpacer reserves width for a logo we don't have, and the
-           header row around the collapse arrow has more padding than a
-           single icon needs -- both just push everything below down. */
+        /* The collapse arrow lives in its own header container, sitting in
+           a separate row above "New" -- collapse that header out of the
+           layout entirely and float the arrow itself into "New"'s row on
+           the right instead. */
         [data-testid="stLogoSpacer"] {
             display: none !important;
         }
         [data-testid="stSidebarHeader"] {
+            position: absolute !important;
+            top: 0;
+            left: 0;
+            width: 100% !important;
+            height: 0 !important;
             min-height: 0 !important;
-            height: auto !important;
-            padding: 6px 8px !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            z-index: 3;
+        }
+        [data-testid="stSidebarCollapseButton"] {
+            position: absolute !important;
+            top: 14px;
+            right: 8px;
+        }
+        [data-testid="stSidebarCollapseButton"] button {
+            visibility: visible !important;
         }
         [data-testid="stSidebar"] button p {
             white-space: nowrap;
