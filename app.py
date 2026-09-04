@@ -635,11 +635,6 @@ if __name__ == "__main__":
         [data-testid="stSidebar"] hr {
             margin: 8px 0 !important;
         }
-        .st-key-sidebar-settings [data-testid="stCaptionContainer"] {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
         .st-key-previous-chats-list,
         .st-key-pinned-chats-list {
             gap: 0 !important;
@@ -981,11 +976,10 @@ if __name__ == "__main__":
 
         with st.container(key="sidebar-settings"):
             st.divider()
-            st.header("Settings")
             if user_email:
-                st.caption(f"Signed in as {st.user.email}")
-                if st.button("Log out"):
-                    st.logout()
+                with st.popover(first_name, icon=":material/account_circle:", use_container_width=True):
+                    if st.button("Log out", key="logout-btn", icon=":material/logout:", use_container_width=True):
+                        st.logout()
             else:
                 if st.button("Log in with Google", icon=":material/login:"):
                     st.login()
