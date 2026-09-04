@@ -307,7 +307,17 @@ def format_timestamp(seconds) -> str:
 
 def add_timestamp_display(docs):
     for doc in docs:
-        doc.metadata["timestamp_display"] = format_timestamp(doc.metadata.get("start_time"))
+        title = doc.metadata.get("video_title", "Untitled Video")
+        video_id = doc.metadata.get("video_id")
+        start_time = doc.metadata.get("start_time")
+        timestamp_display = format_timestamp(start_time)
+        doc.metadata["timestamp_display"] = timestamp_display
+
+        if video_id and start_time is not None:
+            url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
+        else:
+            url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
+        doc.metadata["citation_link"] = f"[{title}, {timestamp_display}]({url})"
     return docs
 
 
@@ -361,14 +371,17 @@ def init_rag_chain():
         "genuinely easy to miss, and only if truly necessary — most answers should have zero bolded "
         "text. Before finalizing, check every list item for a leading **bold** span and rewrite it "
         "as plain text if found.\n\n"
-        "QUOTES & TIMESTAMPS: Each context chunk below is tagged with a Video title and a Timestamp "
-        "(MM:SS or H:MM:SS, marking where that chunk starts in the video). For the 2-4 most "
-        "load-bearing claims, cues, or numbers in your answer, back them with a short direct quote "
-        "(a few words to one sentence, copied verbatim from that chunk's text) followed by an inline "
-        "citation of the video title and timestamp in parentheses, e.g. — \"raise the hips before the "
-        "shoulders\" (How to Squat Properly, 4:12). Only use a Timestamp value that's actually printed "
-        "on the chunk you're quoting from — never invent or estimate one. Not every sentence needs a "
-        "quote; use them where a direct quote adds real credibility, not as decoration on every line.\n\n"
+        "QUOTES & TIMESTAMPS: Each context chunk below is tagged with a Video title, Timestamp "
+        "(MM:SS or H:MM:SS marking where that chunk starts), and a Citation Link — a ready-made "
+        "markdown link like '[How to Squat Properly, 4:12](https://www.youtube.com/watch?v=...)'. "
+        "For the 2-4 most load-bearing claims, cues, or numbers in your answer, back them with a "
+        "short direct quote (a few words to one sentence, copied verbatim from that chunk's text) "
+        "followed immediately by that chunk's exact Citation Link, copied character-for-character "
+        "— e.g. — \"raise the hips before the shoulders\" [How to Squat Properly, 4:12](https://www."
+        "youtube.com/watch?v=abc123&t=252s). Never retype, shorten, or hand-construct the link "
+        "yourself — paste the given Citation Link markdown exactly as-is, right after the quote it "
+        "supports. Not every sentence needs a quote; use them where a direct quote adds real "
+        "credibility, not as decoration on every line.\n\n"
         "VIDEO CONTEXT:\n{context}"
     )
 
@@ -380,8 +393,8 @@ def init_rag_chain():
 
     document_prompt = PromptTemplate.from_template(
         "[Video: {video_title} | Coach: {coach} | Timestamp: {timestamp_display} | "
-        "Focus: {primary_focus} | Difficulty: {difficulty} | Exercises: {exercise_list} | "
-        "Stats: {stats_summary}]\n"
+        "Citation Link: {citation_link} | Focus: {primary_focus} | Difficulty: {difficulty} | "
+        "Exercises: {exercise_list} | Stats: {stats_summary}]\n"
         "{page_content}"
     )
 
