@@ -591,6 +591,8 @@ if __name__ == "__main__":
         }
         .st-key-sidebar-settings {
             padding-bottom: 3px !important;
+            margin-left: -14.5px;
+            width: calc(100% + 14.5px);
         }
         /* Strip the default button box (background/border) so the account
            row reads as plain content with a hover highlight, not a button,
