@@ -14,6 +14,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 REQUEST_TIMEOUT_MS = 120_000
 EMBED_BATCH_SIZE = 100  # Google's max texts per embed_content call
+# Pinecone caps each upsert request at 2MB. These are 3072-dim vectors, so
+# each one's "values" array alone runs ~60KB JSON-encoded -- a batch of 20
+# stays safely under the limit even with metadata included.
+UPSERT_BATCH_SIZE = 20
 
 SPEAKER_TAG_RE = re.compile(r'^\[SPEAKER:[^\]]*\]\s*')
 SKIP_LOG = "chunk_skipped.json"
@@ -288,7 +292,8 @@ def process_and_upload(index):
                             "metadata": metadata,
                         })
 
-                    index.upsert(vectors=pinecone_vectors)
+                    for start in range(0, len(pinecone_vectors), UPSERT_BATCH_SIZE):
+                        index.upsert(vectors=pinecone_vectors[start:start + UPSERT_BATCH_SIZE])
                     time.sleep(0.2)  # Respect rate limits between videos
 
                 except Exception as e:
