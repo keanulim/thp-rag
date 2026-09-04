@@ -377,6 +377,17 @@ if __name__ == "__main__":
     st.markdown(
         """
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        html, body, [class*="css"],
+        h1, h2, h3, h4, h5, h6, p, span, div, button, input, textarea, li, label {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        }
+        /* Material Symbols icons (:material/...: buttons) must keep their
+           own icon font -- the blanket rule above would otherwise render
+           them as literal text like "add" instead of a glyph. */
+        [data-testid="stIconMaterial"] {
+            font-family: 'Material Symbols Rounded' !important;
+        }
         /* Prevent the outer document from scrolling/rubber-banding at all --
            only stMain (chat) and the sidebar's own regions should scroll.
            Without this, trackpad overscroll bounces the whole page a few
