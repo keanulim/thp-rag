@@ -646,6 +646,8 @@ if __name__ == "__main__":
             border: none !important;
             box-shadow: none !important;
             min-height: 0 !important;
+            height: 18px !important;
+            line-height: 1 !important;
             padding: 0 !important;
             opacity: 0 !important;
             transition: opacity 0.15s ease, background-color 0.15s ease;
@@ -656,7 +658,8 @@ if __name__ == "__main__":
             background: rgba(255, 255, 255, 0.15) !important;
         }
         div[class*="st-key-menu-"] [data-testid="stIconMaterial"] {
-            font-size: 16px !important;
+            font-size: 14px !important;
+            line-height: 1 !important;
         }
         div[class*="st-key-chatrow-"] {
             border-radius: 8px;
