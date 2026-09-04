@@ -641,18 +641,27 @@ if __name__ == "__main__":
         div[class*="st-key-section-toggle-"] button[data-testid="stBaseButton-secondary"]:hover p {
             color: #B0B0B0 !important;
         }
+        /* Zeroes the .stButton wrapper div itself (a real Streamlit class,
+           not just the testid) — it carries its own default padding that
+           was adding ~3.5px above/below the button regardless of the
+           button's own padding/height being zeroed. */
+        div[class*="st-key-menu-"] {
+            padding: 0 !important;
+            margin: 0 !important;
+            line-height: 0 !important;
+        }
         div[class*="st-key-menu-"] button[data-testid="stBaseButton-secondary"] {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             min-height: 0 !important;
-            height: 18px !important;
+            height: 15px !important;
             line-height: 1 !important;
             padding: 0 !important;
             opacity: 0 !important;
             transition: opacity 0.15s ease, background-color 0.15s ease;
             position: relative;
-            top: 8.3125px;
+            top: 0px;
         }
         div[class*="st-key-menu-"] button[data-testid="stBaseButton-secondary"]:hover {
             background: rgba(255, 255, 255, 0.15) !important;
