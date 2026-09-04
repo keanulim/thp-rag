@@ -587,7 +587,39 @@ if __name__ == "__main__":
             min-height: 0;
         }
         [data-testid="stLayoutWrapper"]:has(> .st-key-sidebar-settings) {
-            margin-top: 0;
+            margin-top: auto;
+        }
+        .st-key-sidebar-settings {
+            padding-bottom: 3px !important;
+        }
+        /* Strip the default button box (background/border) so the account
+           row reads as plain content with a hover highlight, not a button,
+           and add the letter-avatar circle as a pseudo-element since
+           st.popover's label can't hold raw HTML. */
+        .st-key-sidebar-settings [data-testid="stPopover"] button {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 8px;
+            padding: 6px 8px !important;
+            transition: background-color 0.15s ease;
+        }
+        .st-key-sidebar-settings [data-testid="stPopover"] button:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+        }
+        .st-key-sidebar-settings [data-testid="stPopover"] button::before {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #3A3A3A;
+            color: #F2F2F2;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+            flex-shrink: 0;
         }
         [data-testid="stSidebar"] {
             background-color: #121212 !important;
@@ -977,7 +1009,17 @@ if __name__ == "__main__":
         with st.container(key="sidebar-settings"):
             st.divider()
             if user_email:
-                with st.popover(first_name, icon=":material/account_circle:", use_container_width=True):
+                # st.popover can't take raw HTML in its label, so the letter
+                # avatar is injected as a ::before pseudo-element instead --
+                # this tiny stylesheet is the only place that needs the
+                # actual initial, computed fresh per user.
+                initial = (first_name[0] if first_name and first_name != "Your" else user_email[0]).upper()
+                st.markdown(
+                    f"<style>.st-key-sidebar-settings [data-testid=\"stPopover\"] "
+                    f"button::before {{ content: \"{initial}\"; }}</style>",
+                    unsafe_allow_html=True,
+                )
+                with st.popover(first_name, use_container_width=True):
                     if st.button("Log out", key="logout-btn", icon=":material/logout:", use_container_width=True):
                         st.logout()
             else:
