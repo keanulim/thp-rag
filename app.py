@@ -10,6 +10,7 @@ from streamlit.errors import StreamlitSecretNotFoundError
 from langchain_pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
+from langchain_core.runnables import RunnableLambda
 from langchain_classic.chains import create_retrieval_chain, create_history_aware_retriever
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
@@ -295,6 +296,21 @@ def apply_coach_filter(retriever, question: str):
         retriever.search_kwargs.pop("filter", None)
 
 
+def format_timestamp(seconds) -> str:
+    if seconds is None:
+        return "unknown"
+    seconds = int(seconds)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+
+
+def add_timestamp_display(docs):
+    for doc in docs:
+        doc.metadata["timestamp_display"] = format_timestamp(doc.metadata.get("start_time"))
+    return docs
+
+
 @st.cache_resource
 def init_rag_chain():
     embeddings = GoogleGenerativeAIEmbeddings(
@@ -305,6 +321,10 @@ def init_rag_chain():
 
     llm = ChatGoogleGenerativeAI(model="gemini-3.7-flash", temperature=0.2)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
+    # apply_coach_filter (called per-query) mutates retriever.search_kwargs
+    # directly, so the timestamp-formatting step is appended after it via
+    # piping rather than swapping in a wrapped retriever object.
+    retriever_with_timestamps = retriever | RunnableLambda(add_timestamp_display)
 
     contextualize_prompt = ChatPromptTemplate.from_messages([
         ("system",
@@ -315,7 +335,9 @@ def init_rag_chain():
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ])
-    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_prompt)
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever_with_timestamps, contextualize_prompt
+    )
 
     system_prompt = (
         "You are an Elite Vertical Jump Coach specializing in THP Strength and John Evans methodologies. "
@@ -339,6 +361,14 @@ def init_rag_chain():
         "genuinely easy to miss, and only if truly necessary — most answers should have zero bolded "
         "text. Before finalizing, check every list item for a leading **bold** span and rewrite it "
         "as plain text if found.\n\n"
+        "QUOTES & TIMESTAMPS: Each context chunk below is tagged with a Video title and a Timestamp "
+        "(MM:SS or H:MM:SS, marking where that chunk starts in the video). For the 2-4 most "
+        "load-bearing claims, cues, or numbers in your answer, back them with a short direct quote "
+        "(a few words to one sentence, copied verbatim from that chunk's text) followed by an inline "
+        "citation of the video title and timestamp in parentheses, e.g. — \"raise the hips before the "
+        "shoulders\" (How to Squat Properly, 4:12). Only use a Timestamp value that's actually printed "
+        "on the chunk you're quoting from — never invent or estimate one. Not every sentence needs a "
+        "quote; use them where a direct quote adds real credibility, not as decoration on every line.\n\n"
         "VIDEO CONTEXT:\n{context}"
     )
 
@@ -349,8 +379,9 @@ def init_rag_chain():
     ])
 
     document_prompt = PromptTemplate.from_template(
-        "[Video: {video_title} | Coach: {coach} | Focus: {primary_focus} | "
-        "Difficulty: {difficulty} | Exercises: {exercise_list} | Stats: {stats_summary}]\n"
+        "[Video: {video_title} | Coach: {coach} | Timestamp: {timestamp_display} | "
+        "Focus: {primary_focus} | Difficulty: {difficulty} | Exercises: {exercise_list} | "
+        "Stats: {stats_summary}]\n"
         "{page_content}"
     )
 
