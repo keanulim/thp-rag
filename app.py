@@ -1004,13 +1004,34 @@ if __name__ == "__main__":
             for i, message in enumerate(st.session_state.messages):
                 with chat_bubble(message["role"], i):
                     st.markdown(message["content"])
-                if message["role"] == "assistant" and user_email:
-                    preceding_question = (
-                        st.session_state.messages[i - 1]["content"] if i > 0 else ""
-                    )
-                    render_feedback_buttons(
-                        user_email, st.session_state.chat_id, i, preceding_question, message["content"]
-                    )
+                if message["role"] == "assistant":
+                    # Sources are only ever available for the message just
+                    # generated this session (never persisted/reloaded from
+                    # Supabase) — stashed by the generation step below and
+                    # shown here, once, the first time this becomes the
+                    # newest message.
+                    if i == len(st.session_state.messages) - 1 and "pending_sources" in st.session_state:
+                        with st.expander("Sources & References"):
+                            for doc in st.session_state.pending_sources:
+                                title = doc.metadata.get("video_title", "Untitled Video")
+                                video_id = doc.metadata.get("video_id")
+                                start_time = doc.metadata.get("start_time")
+
+                                if video_id and start_time is not None:
+                                    url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
+                                else:
+                                    url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
+
+                                st.markdown(f"🔗 [{title}]({url})")
+                        del st.session_state["pending_sources"]
+
+                    if user_email:
+                        preceding_question = (
+                            st.session_state.messages[i - 1]["content"] if i > 0 else ""
+                        )
+                        render_feedback_buttons(
+                            user_email, st.session_state.chat_id, i, preceding_question, message["content"]
+                        )
 
             user_input = st.chat_input("Ask a technical training question...", key="chat_input_bottom")
 
@@ -1046,28 +1067,18 @@ if __name__ == "__main__":
                                 "Please try sending your question again."
                             )
                         else:
-                            st.markdown(answer)
-
-                            with st.expander("Sources & References"):
-                                for doc in response.get("context", []):
-                                    title = doc.metadata.get("video_title", "Untitled Video")
-                                    video_id = doc.metadata.get("video_id")
-                                    start_time = doc.metadata.get("start_time")
-
-                                    if video_id and start_time is not None:
-                                        url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
-                                    else:
-                                        url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
-
-                                    st.markdown(f"🔗 [{title}]({url})")
-
                             st.session_state.messages.append({"role": "assistant", "content": answer})
+                            st.session_state.pending_sources = response.get("context", [])
                             if user_email:
                                 save_message(user_email, st.session_state.chat_id, "assistant", answer)
-                                render_feedback_buttons(
-                                    user_email,
-                                    st.session_state.chat_id,
-                                    len(st.session_state.messages) - 1,
-                                    pending_question,
-                                    answer,
-                                )
+                            # Rerun instead of rendering inline here. The history
+                            # loop above is now the ONLY place any message is
+                            # ever rendered — this used to also render here as a
+                            # one-off "new" bubble, which left a second, separate
+                            # on-screen position for "the latest message" that
+                            # went stale across the next send: while the next
+                            # answer was generating, the frontend kept showing
+                            # this position's last real content (this message's
+                            # own feedback buttons) until the new run finished,
+                            # which looked like duplicate/premature thumbs.
+                            st.rerun()
