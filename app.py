@@ -431,6 +431,10 @@ if __name__ == "__main__":
         }
         div[class*="st-key-chatrow-"] [data-testid="stHorizontalBlock"] {
             align-items: stretch !important;
+            gap: 0 !important;
+        }
+        div[class*="st-key-chatrow-"] [data-testid="stColumn"] {
+            padding: 0 !important;
         }
         /* Force every wrapper between chatrow and the title button to
            position:static, so the button's position:absolute below is
@@ -641,7 +645,7 @@ if __name__ == "__main__":
             border: none !important;
             box-shadow: none !important;
             min-height: 0 !important;
-            padding: 4px !important;
+            padding: 2px !important;
             opacity: 0 !important;
             transition: opacity 0.15s ease, background-color 0.15s ease;
             position: relative;
