@@ -417,7 +417,7 @@ if __name__ == "__main__":
             margin-bottom: 0;
         }
         [data-testid="stChatInput"] {
-            border-radius: 22px;
+            border-radius: 28px;
             max-width: 820px;
             margin-left: auto;
             margin-right: auto;
@@ -428,14 +428,29 @@ if __name__ == "__main__":
             border-width: 1px !important;
             border-color: #454545 !important;
             background-color: #1E1E1E !important;
+            border-radius: 28px !important;
             box-shadow: none !important;
+        }
+        /* Default is a solid filled primary-color (red) circle -- restyle to
+           a quiet, borderless icon that blends into the input, matching a
+           minimal composer-bar look instead of a bright CTA button. */
+        [data-testid="stChatInputSubmitButton"] {
+            background-color: transparent !important;
+            color: #8E8E8E !important;
+        }
+        [data-testid="stChatInputSubmitButton"]:not(:disabled):hover {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+            color: #B0B0B0 !important;
+        }
+        [data-testid="stChatInputSubmitButton"]:disabled {
+            color: #4A4A4A !important;
         }
         [data-testid="stChatInput"] div:has(> [data-testid="stChatInputTextArea"]),
         [data-testid="stChatInput"] div:has(> div > [data-testid="stChatInputTextArea"]) {
             background-color: transparent !important;
         }
         [data-testid="stChatInputTextArea"]::placeholder {
-            color: #5C5C5C !important;
+            color: #8A8A8A !important;
             font-weight: 300 !important;
         }
         div[class*="st-key-chatrow-"] [data-testid="stHorizontalBlock"] {
