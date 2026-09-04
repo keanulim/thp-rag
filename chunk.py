@@ -2,13 +2,18 @@ import os
 import re
 import json
 import time
+import httpx
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
 from google import genai
+from google.genai import types
 from google.genai.errors import ClientError
 from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+REQUEST_TIMEOUT_MS = 120_000
+EMBED_BATCH_SIZE = 100  # Google's max texts per embed_content call
 
 SPEAKER_TAG_RE = re.compile(r'^\[SPEAKER:[^\]]*\]\s*')
 SKIP_LOG = "chunk_skipped.json"
@@ -83,14 +88,31 @@ def mark_chunked(chunked_files: set[str], key: str):
 @retry(
     wait=wait_random_exponential(min=1, max=60),
     stop=stop_after_attempt(5),
-    retry=retry_if_exception_type(ClientError)
+    retry=retry_if_exception_type((ClientError, httpx.TimeoutException))
 )
-def embed_chunk(chunk):
+def embed_batch(chunks: list[str]):
+    """Embed up to EMBED_BATCH_SIZE chunks in a single API call instead of
+    one call per chunk — the same total token volume, but a fraction of the
+    requests, which is what was actually making this step slow."""
     return client.models.embed_content(
         model='gemini-embedding-001',
-        contents=chunk,
-        config={'task_type': 'RETRIEVAL_DOCUMENT'},
+        contents=chunks,
+        config=types.EmbedContentConfig(
+            task_type='RETRIEVAL_DOCUMENT',
+            http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
+        ),
     )
+
+
+def embed_all(chunks: list[str]):
+    """Embed an arbitrary number of chunks, splitting into API-size-limited
+    batches as needed. Returns one embedding vector per input chunk, in order."""
+    vectors = []
+    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[start:start + EMBED_BATCH_SIZE]
+        res = embed_batch(batch)
+        vectors.extend(e.values for e in res.embeddings)
+    return vectors
 
 
 # 3. LANGCHAIN SMART SPLITTER
@@ -237,17 +259,21 @@ def process_and_upload(index):
                 )
                 extracted_metadata = flatten_extracted_metadata(entry)
 
-                for i, chunk in enumerate(chunks):
-                    try:
-                        # --- THE FIX: USE THE SAME MODEL AS APP.PY ---
-                        res = embed_chunk(chunk)
-                        vector = res.embeddings[0].values
+                if not chunks:
+                    continue
 
+                try:
+                    # One batched call (or a few, if over EMBED_BATCH_SIZE)
+                    # for every chunk in this video, instead of one call per
+                    # chunk — same total tokens, far fewer requests.
+                    vectors = embed_all(chunks)
+
+                    pinecone_vectors = []
+                    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
                         chunk_position = max(full_text.find(chunk), 0)
                         start_time = estimate_chunk_timestamp(
                             chunk, chunk_position, len(full_text), raw_text, time_index, total_duration
                         )
-
                         metadata = {
                             "text": chunk,
                             "video_id": video_id,
@@ -256,19 +282,19 @@ def process_and_upload(index):
                             "start_time": start_time,
                             **extracted_metadata,
                         }
-
-                        index.upsert(vectors=[{
+                        pinecone_vectors.append({
                             "id": f"{video_id}_{entry_idx}_{i}",
                             "values": vector,
-                            "metadata": metadata
-                        }])
+                            "metadata": metadata,
+                        })
 
-                        time.sleep(0.1)  # Respect Rate Limits
+                    index.upsert(vectors=pinecone_vectors)
+                    time.sleep(0.2)  # Respect rate limits between videos
 
-                    except Exception as e:
-                        print(f"❌ Error on {filename} chunk {i}: {e}")
-                        log_skip(skipped, video_id, i, str(e)[:200])
-                        time.sleep(2)
+                except Exception as e:
+                    print(f"❌ Error on {filename}: {e}")
+                    log_skip(skipped, video_id, -1, str(e)[:200])
+                    time.sleep(2)
 
             mark_chunked(chunked_files, state_key)
 
