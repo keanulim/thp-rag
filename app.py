@@ -571,7 +571,7 @@ if __name__ == "__main__":
             min-height: 0;
         }
         [data-testid="stLayoutWrapper"]:has(> .st-key-sidebar-settings) {
-            margin-top: auto;
+            margin-top: 0;
         }
         [data-testid="stSidebar"] {
             background-color: #121212 !important;
