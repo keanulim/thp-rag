@@ -6,7 +6,7 @@ A RAG chatbot that answers vertical jump / dunk training questions by retrieving
 
 **Auth (`app.py`)**
 
-Access is gated behind Google login, using Streamlit's built-in `st.login()` (OIDC). No passwords are handled by this app — Google does the authentication, and Streamlit stores the identity in a signed cookie in the browser. A logged-in user's email is used as their identifier for saved chats.
+Google login is optional, using Streamlit's built-in `st.login()` (OIDC) — No passwords are handled by this app; Google does the authentication, and Streamlit stores the identity in a signed cookie in the browser. Anyone can chat without logging in; it just isn't saved anywhere (no history, pinning, chat titles, or feedback capture). Logging in gives a logged-in user's email as their identifier for saved chats and unlocks that persistence.
 
 **Chat flow (`app.py`)**
 

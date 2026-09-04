@@ -798,15 +798,14 @@ if __name__ == "__main__":
         )
         st.stop()
 
-    if not st.user.is_logged_in:
-        st.title("Dunk Bot")
-        st.write("Sign in with Google to start chatting.")
-        if st.button("Log in with Google"):
-            st.login()
-        st.stop()
-
-    user_email = st.user.email
-    first_name = st.user.get("given_name") or st.user.get("name") or "Your"
+    # Logging in is optional — anonymous users get a fully working chat that
+    # just isn't saved anywhere (no Supabase history, pinning, titles, or
+    # feedback persistence). user_email is None for the whole rest of the
+    # app in that case, and every persistence call below is guarded on it.
+    user_email = st.user.email if st.user.is_logged_in else None
+    first_name = (
+        (st.user.get("given_name") or st.user.get("name") or "Your") if user_email else "Your"
+    )
 
     # A fresh chat_id each time the session starts (e.g. on login) — never
     # auto-resumes a previous conversation.
@@ -819,8 +818,11 @@ if __name__ == "__main__":
     # already cached (the common case) resolves in this same pass with no
     # extra round-trip — only a genuinely slow, uncached fetch shows a spinner.
     if st.session_state.messages is None:
-        with st.spinner("Loading chat..."):
-            st.session_state.messages = load_all_histories(user_email).get(st.session_state.chat_id, [])
+        if user_email:
+            with st.spinner("Loading chat..."):
+                st.session_state.messages = load_all_histories(user_email).get(st.session_state.chat_id, [])
+        else:
+            st.session_state.messages = []
 
     try:
         rag_chain, retriever = init_rag_chain()
@@ -844,55 +846,62 @@ if __name__ == "__main__":
             st.session_state.view = "chat"
             st.rerun()
 
-        all_chats = list_chats(user_email)
-        chats_by_id = {chat["chat_id"]: chat for chat in all_chats}
-        pinned_ids = [cid for cid in list_pinned_chat_ids(user_email) if cid in chats_by_id]
-
-        if "pinned_section_open" not in st.session_state:
-            st.session_state.pinned_section_open = True
-        if "chats_section_open" not in st.session_state:
-            st.session_state.chats_section_open = True
-
         st.divider()
 
-        if pinned_ids:
-            with st.container(key="pinned-section"):
-                state = "open" if st.session_state.pinned_section_open else "closed"
-                with st.container(key=f"section-toggle-pinned-{state}"):
-                    if st.button("Pinned", key="toggle-pinned-section", use_container_width=True):
-                        st.session_state.pinned_section_open = not st.session_state.pinned_section_open
-                        st.rerun()
-                if st.session_state.pinned_section_open:
-                    with st.container(key="pinned-chats-list"):
-                        for chat_id in pinned_ids:
-                            render_chat_row(chats_by_id[chat_id], user_email, is_pinned=True)
+        if user_email:
+            all_chats = list_chats(user_email)
+            chats_by_id = {chat["chat_id"]: chat for chat in all_chats}
+            pinned_ids = [cid for cid in list_pinned_chat_ids(user_email) if cid in chats_by_id]
 
-        with st.container(key="chats-section"):
-            state = "open" if st.session_state.chats_section_open else "closed"
-            with st.container(key=f"section-toggle-chats-{state}"):
-                if st.button(f"{first_name}'s Chats", key="toggle-chats-section", use_container_width=True):
-                    st.session_state.chats_section_open = not st.session_state.chats_section_open
-                    st.rerun()
-            if st.session_state.chats_section_open:
-                with st.container(key="previous-chats-list"):
-                    unpinned_chats = [c for c in all_chats if c["chat_id"] not in pinned_ids]
-                    for chat in unpinned_chats[:12]:
-                        render_chat_row(chat, user_email, is_pinned=False)
+            if "pinned_section_open" not in st.session_state:
+                st.session_state.pinned_section_open = True
+            if "chats_section_open" not in st.session_state:
+                st.session_state.chats_section_open = True
 
-                    if len(unpinned_chats) > 12:
-                        if st.button("View all conversations", key="see-more-chats"):
-                            st.session_state.view = "all_chats"
+            if pinned_ids:
+                with st.container(key="pinned-section"):
+                    state = "open" if st.session_state.pinned_section_open else "closed"
+                    with st.container(key=f"section-toggle-pinned-{state}"):
+                        if st.button("Pinned", key="toggle-pinned-section", use_container_width=True):
+                            st.session_state.pinned_section_open = not st.session_state.pinned_section_open
                             st.rerun()
+                    if st.session_state.pinned_section_open:
+                        with st.container(key="pinned-chats-list"):
+                            for chat_id in pinned_ids:
+                                render_chat_row(chats_by_id[chat_id], user_email, is_pinned=True)
+
+            with st.container(key="chats-section"):
+                state = "open" if st.session_state.chats_section_open else "closed"
+                with st.container(key=f"section-toggle-chats-{state}"):
+                    if st.button(f"{first_name}'s Chats", key="toggle-chats-section", use_container_width=True):
+                        st.session_state.chats_section_open = not st.session_state.chats_section_open
+                        st.rerun()
+                if st.session_state.chats_section_open:
+                    with st.container(key="previous-chats-list"):
+                        unpinned_chats = [c for c in all_chats if c["chat_id"] not in pinned_ids]
+                        for chat in unpinned_chats[:12]:
+                            render_chat_row(chat, user_email, is_pinned=False)
+
+                        if len(unpinned_chats) > 12:
+                            if st.button("View all conversations", key="see-more-chats"):
+                                st.session_state.view = "all_chats"
+                                st.rerun()
+        else:
+            st.caption("Log in to save your chat history, pin chats, and leave feedback on answers.")
 
         with st.container(key="sidebar-settings"):
             st.divider()
             st.header("Settings")
-            st.caption(f"Signed in as {st.user.email}")
-            if st.button("Log out"):
-                st.logout()
+            if user_email:
+                st.caption(f"Signed in as {st.user.email}")
+                if st.button("Log out"):
+                    st.logout()
+            else:
+                if st.button("Log in with Google", icon=":material/login:"):
+                    st.login()
 
     # --- ALL CHATS (SEARCH) PAGE ---
-    if st.session_state.view == "all_chats":
+    if st.session_state.view == "all_chats" and user_email:
         if st.button("← Back", key="back-to-chat"):
             st.session_state.view = "chat"
             st.rerun()
@@ -947,16 +956,17 @@ if __name__ == "__main__":
                 # rather than only after the bot's reply finishes.
                 hero_placeholder.empty()
                 st.session_state.messages.append({"role": "user", "content": hero_input})
-                save_message(user_email, st.session_state.chat_id, "user", hero_input)
-                title = generate_chat_title(hero_input)
-                save_chat_title(user_email, st.session_state.chat_id, title)
+                if user_email:
+                    save_message(user_email, st.session_state.chat_id, "user", hero_input)
+                    title = generate_chat_title(hero_input)
+                    save_chat_title(user_email, st.session_state.chat_id, title)
                 st.rerun()
 
         if not is_new_chat:
             for i, message in enumerate(st.session_state.messages):
                 with chat_bubble(message["role"], i):
                     st.markdown(message["content"])
-                if message["role"] == "assistant":
+                if message["role"] == "assistant" and user_email:
                     preceding_question = (
                         st.session_state.messages[i - 1]["content"] if i > 0 else ""
                     )
@@ -968,7 +978,8 @@ if __name__ == "__main__":
 
             if user_input:
                 st.session_state.messages.append({"role": "user", "content": user_input})
-                save_message(user_email, st.session_state.chat_id, "user", user_input)
+                if user_email:
+                    save_message(user_email, st.session_state.chat_id, "user", user_input)
                 with chat_bubble("user", "new"):
                     st.markdown(user_input)
 
@@ -1012,12 +1023,13 @@ if __name__ == "__main__":
 
                                     st.markdown(f"🔗 [{title}]({url})")
 
-                            save_message(user_email, st.session_state.chat_id, "assistant", answer)
                             st.session_state.messages.append({"role": "assistant", "content": answer})
-                            render_feedback_buttons(
-                                user_email,
-                                st.session_state.chat_id,
-                                len(st.session_state.messages) - 1,
-                                pending_question,
-                                answer,
-                            )
+                            if user_email:
+                                save_message(user_email, st.session_state.chat_id, "assistant", answer)
+                                render_feedback_buttons(
+                                    user_email,
+                                    st.session_state.chat_id,
+                                    len(st.session_state.messages) - 1,
+                                    pending_question,
+                                    answer,
+                                )
