@@ -671,7 +671,7 @@ if __name__ == "__main__":
             opacity: 0 !important;
             transition: opacity 0.15s ease, background-color 0.15s ease;
             position: relative;
-            top: 0px;
+            top: 7px;
         }
         div[class*="st-key-menu-"] button[data-testid="stBaseButton-secondary"]:hover {
             background: rgba(255, 255, 255, 0.15) !important;
