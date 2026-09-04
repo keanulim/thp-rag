@@ -571,7 +571,7 @@ if __name__ == "__main__":
             min-height: 0;
             display: flex;
             flex-direction: column;
-            padding-top: 8px !important;
+            padding-top: 12px !important;
             padding-bottom: 0 !important;
         }
         [data-testid="stSidebarUserContent"] > div {
@@ -615,7 +615,7 @@ if __name__ == "__main__":
         }
         [data-testid="stSidebarCollapseButton"] {
             position: absolute !important;
-            top: 13.25px;
+            top: 17.25px;
             right: 8px;
         }
         [data-testid="stSidebarCollapseButton"] button {
