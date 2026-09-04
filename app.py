@@ -593,6 +593,17 @@ if __name__ == "__main__":
             border-right: 0.5px solid #333333;
             min-width: 260px !important;
         }
+        /* stLogoSpacer reserves width for a logo we don't have, and the
+           header row around the collapse arrow has more padding than a
+           single icon needs -- both just push everything below down. */
+        [data-testid="stLogoSpacer"] {
+            display: none !important;
+        }
+        [data-testid="stSidebarHeader"] {
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 6px 8px !important;
+        }
         [data-testid="stSidebar"] button p {
             white-space: nowrap;
             overflow: hidden;
