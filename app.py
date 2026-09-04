@@ -604,6 +604,7 @@ if __name__ == "__main__":
             box-shadow: none !important;
             border-radius: 8px;
             padding: 6px 8px 6px 4px !important;
+            justify-content: flex-start !important;
             transition: background-color 0.15s ease;
         }
         .st-key-sidebar-settings [data-testid="stPopover"] button:hover {
