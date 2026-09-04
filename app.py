@@ -383,6 +383,10 @@ if __name__ == "__main__":
             border: none;
             box-shadow: none;
         }
+        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"],
+        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+            font-weight: 300 !important;
+        }
         [data-testid="stChatMessageAvatarUser"],
         [data-testid="stChatMessageAvatarAssistant"],
         [data-testid="stChatMessageAvatarCustom"] {
