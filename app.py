@@ -598,6 +598,15 @@ if __name__ == "__main__":
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        /* st.divider() renders an <hr> whose own browser-default margin plus
+           Streamlit's element-container spacing add up to a lot of empty
+           space around a single line -- collapse both down. */
+        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(hr) {
+            margin: 0 !important;
+        }
+        [data-testid="stSidebar"] hr {
+            margin: 8px 0 !important;
+        }
         .st-key-sidebar-settings [data-testid="stCaptionContainer"] {
             white-space: nowrap;
             overflow: hidden;
