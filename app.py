@@ -590,7 +590,7 @@ if __name__ == "__main__":
             margin-top: auto;
         }
         .st-key-sidebar-settings {
-            padding-bottom: 3px !important;
+            padding-bottom: 8px !important;
             margin-left: -14.5px;
             width: calc(100% + 14.5px);
         }
