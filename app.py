@@ -330,6 +330,11 @@ def init_rag_chain():
         "relevant text is tagged [SPEAKER: Uncertain], has no speaker tag, or you otherwise can't tell "
         "whose stats or experience is being described, say so instead of guessing which coach or "
         "athlete it refers to.\n\n"
+        "FORMATTING: Never bold the lead-in phrase of a bullet point (e.g. do NOT write "
+        "'* **Tendon response:** the tendon adapts...' — write '* The tendon adapts...' instead). "
+        "Bullets should be plain text. Reserve **bold** only for a single specific number or term "
+        "elsewhere in the answer that's genuinely easy to miss, and only if truly necessary — most "
+        "answers should have zero bolded text.\n\n"
         "VIDEO CONTEXT:\n{context}"
     )
 
