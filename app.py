@@ -593,6 +593,18 @@ if __name__ == "__main__":
             padding-bottom: 8px !important;
             margin-left: -9.5px;
             width: calc(100% + 9.5px);
+            /* Use flex gap alone (not the hr's own margin) for the
+               divider-to-button spacing, compensating for the markdown
+               wrapper's own internal offset, so the total matches the
+               button-to-edge padding above (measured empirically). */
+            gap: 15.5px !important;
+        }
+        /* An invisible st.markdown() call injects the account-row's
+           avatar-circle <style> tag as a real (zero-content) flex item --
+           drop it from the flex flow so it doesn't consume an extra gap.
+           <style> tags still apply their rules while display:none. */
+        .st-key-sidebar-settings [data-testid="stElementContainer"]:has(style) {
+            display: none !important;
         }
         /* Strip the default button box (background/border) so the account
            row reads as plain content with a hover highlight, not a button,
@@ -667,8 +679,20 @@ if __name__ == "__main__":
         [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(hr) {
             margin: 0 !important;
         }
+        /* The <hr>'s own margin overflows past its zero-height wrapping
+           container without being contained by it, escaping the flex
+           layout's gap math -- zero it everywhere and control all
+           divider spacing via the container's own margin/gap instead. */
         [data-testid="stSidebar"] hr {
-            margin: 8px 0 !important;
+            margin: 0 !important;
+        }
+        /* The divider right after "New" sits in the sidebar's main flex
+           column, which has its own 14px gap between siblings, plus the
+           markdown wrapper around the <hr> has its own ~6.5px internal
+           offset -- pull the whole flex item up so the total matches the
+           12px edge-to-New gap above (measured empirically). */
+        .st-key-new-chat-btn + [data-testid="stElementContainer"]:has(hr) {
+            margin-top: -8.5px !important;
         }
         .st-key-previous-chats-list,
         .st-key-pinned-chats-list {
