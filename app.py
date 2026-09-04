@@ -584,7 +584,8 @@ if __name__ == "__main__":
         }
         .st-key-previous-chats-list [data-testid="stElementContainer"],
         .st-key-pinned-chats-list [data-testid="stElementContainer"] {
-            margin-bottom: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         .st-key-pinned-section,
         .st-key-chats-section {
@@ -645,7 +646,7 @@ if __name__ == "__main__":
             border: none !important;
             box-shadow: none !important;
             min-height: 0 !important;
-            padding: 2px !important;
+            padding: 0 !important;
             opacity: 0 !important;
             transition: opacity 0.15s ease, background-color 0.15s ease;
             position: relative;
