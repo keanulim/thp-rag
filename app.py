@@ -373,6 +373,17 @@ if __name__ == "__main__":
     st.markdown(
         """
         <style>
+        /* Prevent the outer document from scrolling/rubber-banding at all --
+           only stMain (chat) and the sidebar's own regions should scroll.
+           Without this, trackpad overscroll bounces the whole page a few
+           pixels and reveals the browser's default white background behind
+           the app's dark theme. */
+        html, body {
+            overflow: hidden !important;
+            overscroll-behavior: none !important;
+            background-color: #161616 !important;
+            height: 100%;
+        }
         [data-testid="stMainBlockContainer"] {
             max-width: 960px;
             margin-left: auto;
@@ -641,6 +652,15 @@ if __name__ == "__main__":
             border-right: 0.5px solid #333333;
             min-width: 260px !important;
             position: relative;
+        }
+        /* When collapsed, Streamlit only slides the sidebar off-screen via
+           transform -- it stays in normal flow at its min-width, so the
+           chat area never re-centers into the freed space. Let it actually
+           collapse to 0 width so the chat area re-centers on the full
+           window. */
+        [data-testid="stSidebar"][aria-expanded="false"] {
+            min-width: 0 !important;
+            width: 0 !important;
         }
         /* The collapse arrow lives in its own header container, sitting in
            a separate row above "New" -- collapse that header out of the
