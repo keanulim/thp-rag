@@ -1023,10 +1023,10 @@ if __name__ == "__main__":
                 if st.session_state.chats_section_open:
                     with st.container(key="previous-chats-list"):
                         unpinned_chats = [c for c in all_chats if c["chat_id"] not in pinned_ids]
-                        for chat in unpinned_chats[:15]:
+                        for chat in unpinned_chats[:14]:
                             render_chat_row(chat, user_email, is_pinned=False)
 
-                        if len(unpinned_chats) > 15:
+                        if len(unpinned_chats) > 14:
                             if st.button("View all conversations", key="see-more-chats"):
                                 st.session_state.view = "all_chats"
                                 st.rerun()
