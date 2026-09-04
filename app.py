@@ -724,6 +724,21 @@ if __name__ == "__main__":
         .st-key-new-chat-hero [data-testid="stChatInput"] {
             max-width: 600px;
         }
+        /* The spinner text sits inside a wrapper whose own box height is
+           unstable (collapses near 0 and the text overflows it) -- fighting
+           that with align-items/line-height had zero measured effect across
+           repeated tests. What *is* reliable: the icon consistently renders
+           exactly 7px above the text's vertical center, measured directly
+           via getBoundingClientRect across many trials. Nudging the icon
+           down by that fixed, empirically-verified amount is the actual fix. */
+        [data-testid="stSpinner"] [data-testid="stMarkdownContainer"] p {
+            line-height: 1 !important;
+            margin: 0 !important;
+        }
+        [data-testid="stSpinner"] [data-testid="stSpinnerIcon"] {
+            position: relative;
+            top: 7px;
+        }
         div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"],
         div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"] {
             background: transparent !important;
