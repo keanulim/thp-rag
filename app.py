@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import uuid
+import html
 from contextlib import contextmanager
 from pathlib import Path
 from dotenv import load_dotenv
@@ -86,7 +87,6 @@ def delete_chat(email: str, chat_id: str):
         get_supabase().table("chat_messages").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
         get_supabase().table("pinned_chats").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
         get_supabase().table("chat_titles").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
-        get_supabase().table("message_feedback").delete().eq("user_email", email).eq("chat_id", chat_id).execute()
     except Exception as e:
         _log_error("delete_chat", e)
         st.toast("Couldn't delete this chat — Supabase is unreachable.", icon=":material/error:")
@@ -94,7 +94,6 @@ def delete_chat(email: str, chat_id: str):
     list_chats.clear()
     list_pinned_chat_ids.clear()
     load_all_histories.clear()
-    load_feedback.clear()
 
 
 MAX_PINNED_CHATS = 5
@@ -193,43 +192,6 @@ def save_chat_title(email: str, chat_id: str, title: str):
     list_chats.clear()
 
 
-@st.cache_data(ttl=60)
-def load_feedback(chat_id: str) -> dict[int, str]:
-    """message_index -> 'up'/'down' for every rated assistant message in a chat."""
-    try:
-        res = (
-            get_supabase()
-            .table("message_feedback")
-            .select("message_index, rating")
-            .eq("chat_id", chat_id)
-            .execute()
-        )
-    except Exception as e:
-        _log_error("load_feedback", e)
-        return {}
-    return {row["message_index"]: row["rating"] for row in (res.data or [])}
-
-
-def save_feedback(email: str, chat_id: str, message_index: int, question: str, answer: str, rating: str):
-    try:
-        get_supabase().table("message_feedback").upsert(
-            {
-                "user_email": email,
-                "chat_id": chat_id,
-                "message_index": message_index,
-                "question": question,
-                "answer": answer,
-                "rating": rating,
-            },
-            on_conflict="chat_id,message_index",
-        ).execute()
-    except Exception as e:
-        _log_error("save_feedback", e)
-        st.toast("Couldn't save your feedback — Supabase is unreachable.", icon=":material/error:")
-        return
-    load_feedback.clear()
-
-
 @st.cache_resource
 def get_title_llm():
     return ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0.3, max_output_tokens=30)
@@ -294,6 +256,42 @@ def apply_coach_filter(retriever, question: str):
         retriever.search_kwargs["filter"] = {"coach": coach}
     else:
         retriever.search_kwargs.pop("filter", None)
+
+
+OFF_TOPIC_MESSAGE = (
+    "I'm built specifically for vertical jump and dunk training — ask me about plyometrics, "
+    "squat technique, jump programming, or anything from THP Strength / John Evans and I'll "
+    "dig into the video library for you."
+)
+
+
+@st.cache_resource
+def get_topic_classifier_llm():
+    return ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0, max_output_tokens=5)
+
+
+def is_dunking_related(question: str, chat_history: list | None = None) -> bool:
+    """Cheap gate to skip Pinecone retrieval entirely for obviously off-topic messages."""
+    history_preview = ""
+    if chat_history:
+        history_preview = "\n".join(f"{role}: {content}" for role, content in chat_history[-4:])
+    prompt = (
+        "You're a gate in front of a chatbot that ONLY answers questions about basketball "
+        "dunking, vertical jump training, plyometrics, strength/speed training, or coaching "
+        "content from THP Strength and John Evans. Given the conversation so far and the newest "
+        "message, decide if that newest message is on-topic for this chatbot — including vague "
+        "follow-ups (e.g. 'why', 'how often should I do that') that make sense given the context. "
+        "Reply with exactly one word: YES or NO.\n\n"
+        + (f"Recent conversation:\n{history_preview}\n\n" if history_preview else "")
+        + f"Newest message: {question}"
+    )
+    try:
+        result = get_topic_classifier_llm().invoke(prompt).content
+        if isinstance(result, list):
+            result = "".join(part if isinstance(part, str) else part.get("text", "") for part in result)
+        return not result.strip().upper().startswith("N")
+    except Exception:
+        return True  # fail open -- never block a legit question over a classifier hiccup
 
 
 def format_timestamp(seconds) -> str:
@@ -405,6 +403,8 @@ def init_rag_chain():
 
 # This function is what auditor.py will use
 def query_rag(user_input: str, chat_history: list | None = None):
+    if not is_dunking_related(user_input, chat_history):
+        return {"answer": OFF_TOPIC_MESSAGE, "context": []}
     chain, retriever = init_rag_chain()
     apply_coach_filter(retriever, user_input)
     response = chain.invoke({"input": user_input, "chat_history": chat_history or []})
@@ -924,23 +924,91 @@ if __name__ == "__main__":
             position: relative;
             top: 7px;
         }
-        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"],
-        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"] {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 2px 6px !important;
-            min-height: 0 !important;
-            opacity: 0.55;
-            transition: opacity 0.15s ease;
+        .sources-panel {
+            margin-top: 4px;
+            border: 1px solid #2A2A2A;
+            border-radius: 10px;
+            background: #1A1A1A;
+            overflow: hidden;
         }
-        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"]:hover,
-        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"]:hover {
-            opacity: 1;
+        .sources-panel summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #B0B0B0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
         }
-        div[class*="st-key-fb-up-"] button[data-testid="stBaseButton-secondary"]:disabled,
-        div[class*="st-key-fb-down-"] button[data-testid="stBaseButton-secondary"]:disabled {
-            opacity: 1;
+        .sources-panel summary::-webkit-details-marker { display: none; }
+        .sources-panel summary::before {
+            content: "";
+            width: 7px;
+            height: 7px;
+            border-right: 1.5px solid #8A8A8A;
+            border-bottom: 1.5px solid #8A8A8A;
+            transform: rotate(-45deg);
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+        }
+        .sources-panel[open] summary::before {
+            transform: rotate(45deg);
+        }
+        .sources-count {
+            background: #2A2A2A;
+            color: #8A8A8A;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 999px;
+        }
+        .sources-list {
+            border-top: 1px solid #2A2A2A;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .source-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 8px;
+            border-radius: 7px;
+            text-decoration: none !important;
+            transition: background-color 0.15s ease;
+        }
+        .source-row:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .source-play {
+            font-family: 'Material Symbols Rounded' !important;
+            font-size: 20px !important;
+            color: #666666;
+            flex-shrink: 0;
+        }
+        .source-row:hover .source-play {
+            color: #DC2626;
+        }
+        .source-text {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            min-width: 0;
+        }
+        .source-title {
+            font-size: 0.85rem;
+            color: #E8E8E8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .source-meta {
+            font-size: 0.75rem;
+            color: #7A7A7A;
         }
         </style>
         """,
@@ -952,18 +1020,6 @@ if __name__ == "__main__":
         with st.container(key=f"row-{role}-{key_suffix}"):
             with st.chat_message(role):
                 yield
-
-    def render_feedback_buttons(user_email, chat_id, message_index, question, answer):
-        current = load_feedback(chat_id).get(message_index)
-        up_col, down_col, _ = st.columns([1, 1, 10])
-        with up_col:
-            if st.button("👍", key=f"fb-up-{chat_id}-{message_index}", disabled=current == "up"):
-                save_feedback(user_email, chat_id, message_index, question, answer, "up")
-                st.rerun()
-        with down_col:
-            if st.button("👎", key=f"fb-down-{chat_id}-{message_index}", disabled=current == "down"):
-                save_feedback(user_email, chat_id, message_index, question, answer, "down")
-                st.rerun()
 
     def render_chat_row(chat, user_email, is_pinned):
         chat_id = chat["chat_id"]
@@ -1022,9 +1078,9 @@ if __name__ == "__main__":
         st.stop()
 
     # Logging in is optional — anonymous users get a fully working chat that
-    # just isn't saved anywhere (no Supabase history, pinning, titles, or
-    # feedback persistence). user_email is None for the whole rest of the
-    # app in that case, and every persistence call below is guarded on it.
+    # just isn't saved anywhere (no Supabase history, pinning, or titles).
+    # user_email is None for the whole rest of the app in that case, and
+    # every persistence call below is guarded on it.
     user_email = st.user.email if st.user.is_logged_in else None
     first_name = (
         (st.user.get("given_name") or st.user.get("name") or "Your") if user_email else "Your"
@@ -1110,7 +1166,7 @@ if __name__ == "__main__":
                                 st.session_state.view = "all_chats"
                                 st.rerun()
         else:
-            st.caption("Log in to save your chat history, pin chats, and leave feedback on answers.")
+            st.caption("Log in to save your chat history and pin chats.")
 
         with st.container(key="sidebar-settings"):
             st.divider()
@@ -1205,27 +1261,47 @@ if __name__ == "__main__":
                     # shown here, once, the first time this becomes the
                     # newest message.
                     if i == len(st.session_state.messages) - 1 and "pending_sources" in st.session_state:
-                        with st.expander("Sources & References"):
-                            for doc in st.session_state.pending_sources:
-                                title = doc.metadata.get("video_title", "Untitled Video")
-                                video_id = doc.metadata.get("video_id")
-                                start_time = doc.metadata.get("start_time")
+                        seen_videos = set()
+                        unique_sources = []
+                        for doc in st.session_state.pending_sources:
+                            video_id = doc.metadata.get("video_id")
+                            if video_id in seen_videos:
+                                continue
+                            seen_videos.add(video_id)
 
-                                if video_id and start_time is not None:
-                                    url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
-                                else:
-                                    url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
+                            title = doc.metadata.get("video_title", "Untitled Video")
+                            start_time = doc.metadata.get("start_time")
+                            coach = {"THP": "THP Strength", "John": "John Evans"}.get(
+                                doc.metadata.get("coach"), ""
+                            )
 
-                                st.markdown(f"🔗 [{title}]({url})")
+                            if video_id and start_time is not None:
+                                url = f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
+                            else:
+                                url = url_map.get(video_id, "https://www.youtube.com/@thpstrength1/videos")
+
+                            unique_sources.append((title, coach, format_timestamp(start_time), url))
+
+                        if unique_sources:
+                            rows = "".join(
+                                f'<a class="source-row" href="{url}" target="_blank" rel="noopener">'
+                                f'<span class="source-play">play_circle</span>'
+                                f'<span class="source-text">'
+                                f'<span class="source-title">{html.escape(title)}</span>'
+                                f'<span class="source-meta">{html.escape(coach)} · {timestamp}</span>'
+                                f'</span>'
+                                f'</a>'
+                                for title, coach, timestamp, url in unique_sources
+                            )
+                            st.markdown(
+                                f'<details class="sources-panel">'
+                                f'<summary>Sources & References '
+                                f'<span class="sources-count">{len(unique_sources)}</span></summary>'
+                                f'<div class="sources-list">{rows}</div>'
+                                f'</details>',
+                                unsafe_allow_html=True,
+                            )
                         del st.session_state["pending_sources"]
-
-                    if user_email:
-                        preceding_question = (
-                            st.session_state.messages[i - 1]["content"] if i > 0 else ""
-                        )
-                        render_feedback_buttons(
-                            user_email, st.session_state.chat_id, i, preceding_question, message["content"]
-                        )
 
             user_input = st.chat_input("Ask a technical training question...", key="chat_input_bottom")
 
@@ -1249,11 +1325,16 @@ if __name__ == "__main__":
                 with chat_bubble("assistant", "new"):
                     with st.spinner("Retrieving video data..."):
                         try:
-                            apply_coach_filter(retriever, pending_question)
-                            response = rag_chain.invoke(
-                                {"input": pending_question, "chat_history": chat_history}
-                            )
-                            answer = response.get("answer") or "No response generated."
+                            if is_dunking_related(pending_question, chat_history):
+                                apply_coach_filter(retriever, pending_question)
+                                response = rag_chain.invoke(
+                                    {"input": pending_question, "chat_history": chat_history}
+                                )
+                                answer = response.get("answer") or "No response generated."
+                                sources = response.get("context", [])
+                            else:
+                                answer = OFF_TOPIC_MESSAGE
+                                sources = []
                         except Exception as e:
                             _log_error("query_rag", e)
                             st.error(
@@ -1262,7 +1343,7 @@ if __name__ == "__main__":
                             )
                         else:
                             st.session_state.messages.append({"role": "assistant", "content": answer})
-                            st.session_state.pending_sources = response.get("context", [])
+                            st.session_state.pending_sources = sources
                             if user_email:
                                 save_message(user_email, st.session_state.chat_id, "assistant", answer)
                             # Rerun instead of rendering inline here. The history
@@ -1272,7 +1353,6 @@ if __name__ == "__main__":
                             # on-screen position for "the latest message" that
                             # went stale across the next send: while the next
                             # answer was generating, the frontend kept showing
-                            # this position's last real content (this message's
-                            # own feedback buttons) until the new run finished,
-                            # which looked like duplicate/premature thumbs.
+                            # this position's last real content until the new
+                            # run finished, which looked like a stale duplicate.
                             st.rerun()

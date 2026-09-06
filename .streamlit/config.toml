@@ -1,3 +1,6 @@
+[server]
+runOnSave = true
+
 [theme]
 base = "dark"
 primaryColor = "#DC2626"

@@ -6,7 +6,7 @@ A RAG chatbot that answers vertical jump / dunk training questions by retrieving
 
 **Auth (`app.py`)**
 
-Google login is optional, using Streamlit's built-in `st.login()` (OIDC) — No passwords are handled by this app; Google does the authentication, and Streamlit stores the identity in a signed cookie in the browser. Anyone can chat without logging in; it just isn't saved anywhere (no history, pinning, chat titles, or feedback capture). Logging in gives a logged-in user's email as their identifier for saved chats and unlocks that persistence.
+Google login is optional, using Streamlit's built-in `st.login()` (OIDC) — No passwords are handled by this app; Google does the authentication, and Streamlit stores the identity in a signed cookie in the browser. Anyone can chat without logging in; it just isn't saved anywhere (no history, pinning, or chat titles). Logging in gives a logged-in user's email as their identifier for saved chats and unlocks that persistence.
 
 **Chat flow (`app.py`)**
 
@@ -110,19 +110,6 @@ create table chat_titles (
   created_at timestamptz not null default now()
 );
 create index chat_titles_user_email_idx on chat_titles (user_email);
-
-create table message_feedback (
-  id bigint generated always as identity primary key,
-  user_email text not null,
-  chat_id text not null,
-  message_index int not null,
-  question text,
-  answer text not null,
-  rating text not null check (rating in ('up', 'down')),
-  created_at timestamptz not null default now(),
-  unique (chat_id, message_index)
-);
-create index message_feedback_chat_id_idx on message_feedback (chat_id);
 ```
 
 ## Project structure
