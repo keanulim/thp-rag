@@ -909,6 +909,9 @@ if __name__ == "__main__":
         .st-key-new-chat-hero [data-testid="stChatInput"] {
             max-width: 600px;
         }
+        .st-key-new-chat-hero [data-testid="stHeaderActionElements"] {
+            display: none !important;
+        }
         /* The spinner text sits inside a wrapper whose own box height is
            unstable (collapses near 0 and the text overflows it) -- fighting
            that with align-items/line-height had zero measured effect across
