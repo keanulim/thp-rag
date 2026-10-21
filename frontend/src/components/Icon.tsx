@@ -32,12 +32,7 @@ const paths = {
       <path d="m20 20-3.5-3.5" />
     </>
   ),
-  play: (
-    <>
-      <circle cx="12" cy="12" r="10" />
-      <path d="m10 8 6 4-6 4z" fill="currentColor" />
-    </>
-  ),
+  play: <path d="M7 4.5v15l12.5-7.5z" fill="currentColor" stroke="none" />,
   list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronUpDown: <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />,

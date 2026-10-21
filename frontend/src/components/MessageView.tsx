@@ -10,7 +10,7 @@ const markdownComponents: Components = {
   // Citations like [How to Squat Properly, 4:12](youtube url) render as chips.
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer" className={isYouTube(href) ? 'cite' : undefined}>
-      {isYouTube(href) && <Icon name="play" size={12} />}
+      {isYouTube(href) && <Icon name="play" size={10} />}
       {children}
     </a>
   ),
@@ -37,7 +37,7 @@ function SourcesPanel({ sources }: { sources: Source[] }) {
           {sources.map((s) => (
             <a key={s.url} className="source" href={s.url} target="_blank" rel="noopener noreferrer">
               <span className="source-play">
-                <Icon name="play" size={18} />
+                <Icon name="play" size={14} />
               </span>
               <span className="source-text">
                 <span className="source-title">{s.title}</span>

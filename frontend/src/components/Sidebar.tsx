@@ -4,7 +4,6 @@ import type { ChatSummary } from '../api'
 import { useApp } from '../state'
 import { ChatMenu, useDismiss } from './ChatMenu'
 import { Icon } from './Icon'
-import { Logo } from './Logo'
 
 const RECENT_LIMIT = 14
 
@@ -107,7 +106,6 @@ export function Sidebar({
     <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Chats">
       <div className="sidebar-head">
         <Link to="/" className="brand" onClick={onNavigate}>
-          <Logo size={20} />
           Dunk Bot
         </Link>
         <button className="icon-btn" onClick={onToggle} aria-label="Close sidebar">

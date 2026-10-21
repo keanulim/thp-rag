@@ -15,7 +15,6 @@
   --faint: #5c5c59;
   --link: #86a4ce;
   --code: #d29190;
-  --accent: #dc2626;
   --spark: #d97757;
   --danger: #f87171;
   --radius: 12px;
@@ -537,10 +536,6 @@ a {
   color: #ecebe6;
 }
 
-.hero .logo {
-  flex-shrink: 0;
-}
-
 .hero .composer,
 .hero .error-banner {
   width: min(680px, 100%);
@@ -704,7 +699,7 @@ a {
 
 .prose a.cite svg {
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .prose a.cite:hover {
@@ -887,7 +882,7 @@ a {
 }
 
 .source:hover .source-play {
-  color: var(--accent);
+  color: var(--text-2);
 }
 
 .source-text {
