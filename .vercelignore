@@ -1,0 +1,15 @@
+# Allowlist: upload nothing except what the deployed app needs. Anything new
+# (secrets, data, logs) stays local by default. Secrets reach Vercel only as
+# Environment Variables set in the project, never as files.
+/*
+!/backend
+!/frontend
+!/pyproject.toml
+!/uv.lock
+!/.python-version
+!/youtube_links.json
+
+/frontend/node_modules
+/frontend/dist
+**/__pycache__
+**/.env*

@@ -1,13 +1,15 @@
 [project]
 name = "thp-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Dunk Bot: RAG chatbot over THP Strength and John Evans coaching videos"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "authlib>=1.3.2",
     "dotenv>=0.9.9",
+    "fastapi>=0.143.0",
     "google-genai>=1.59.0",
+    "itsdangerous>=2.2.0",
     "langchain>=1.2.6",
     "langchain-classic>=1.0.1",
     "langchain-google-genai>=4.2.0",
@@ -16,13 +18,26 @@ dependencies = [
     "langchainhub>=0.1.21",
     "openai>=2.15.0",
     "pinecone>=8.0.0",
-    "streamlit>=1.53.0",
     "supabase>=2.31.0",
+    "uvicorn[standard]>=0.54.0",
     "youtube-transcript-api>=1.2.3",
     "yt-dlp>=2026.8.19",
 ]
 
-[tool.uv.workspace]
-members = [
-    "vetted-vertical",
-]
+# --- Vercel ---
+# The API is backend/main.py (the root main.py is the transcript scraper, which
+# Vercel would otherwise auto-detect as the app).
+[tool.vercel]
+entrypoint = "backend.main:app"
+
+# Runs on Vercel after Python deps are installed: builds the React app into
+# frontend/dist, which backend/main.py serves via app.frontend().
+[tool.vercel.scripts]
+build = "npm --prefix frontend ci && npm --prefix frontend run build"
+
+# Serve the React build from Vercel's CDN rather than through the Python
+# function. Vercel would otherwise keep it in the function because of the
+# app-wide SessionMiddleware — but static files don't need the session.
+[tool.vercel.fastapi.static]
+cdn = true
+exclude = true

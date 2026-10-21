@@ -20,3 +20,6 @@ chunked_files.json
 title_gen_errors.log
 app_errors.log
 logs/
+.vercel
+.env*
+!.env.example

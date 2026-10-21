@@ -1,13 +1,13 @@
-"""Standalone CLI for testing the actual RAG chain used by app.py.
+"""Standalone CLI for testing the actual RAG chain used by the API.
 
 Previously this built its own separate chain (generic hub prompt, no coach
 filter, no speaker-attribution guardrail, no metadata in context) — it had
 drifted completely out of sync with app.py and would give different,
 lower-quality answers than the real bot. Now it just calls the same
-query_rag() the app itself uses.
+query_rag() the API itself uses (backend/rag.py).
 """
 import sys
-from app import query_rag
+from backend.rag import query_rag
 
 if __name__ == "__main__":
     question = " ".join(sys.argv[1:]) or "How many sets should I do for each exercise?"
