@@ -40,7 +40,7 @@ export function AllChats() {
       </label>
       <p className="all-chats-count">
         {filtered.length} {filtered.length === 1 ? 'chat' : 'chats'}
-        {q ? ` matching “${query.trim()}”` : ' with Dunk Bot'}
+        {q ? ` matching “${query.trim()}”` : ' with Vert Bot'}
       </p>
       <ul className="all-chats-list">
         {filtered.map((c) => (

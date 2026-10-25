@@ -115,7 +115,7 @@ export function ChatView() {
   if (isEmpty) {
     return (
       <div className="hero">
-        <h1>Ask me anything about dunking</h1>
+        <h1>Ask me anything about vertical jump training</h1>
         <Composer onSend={send} disabled={streaming} autoFocus />
         <p className="hero-sub">Answers come from THP Strength and John Evans coaching videos, with timestamped sources.</p>
         {error && <div className="error-banner">{error}</div>}
