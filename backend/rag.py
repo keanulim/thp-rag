@@ -5,10 +5,12 @@ CLI (query.py).
 """
 import json
 import logging
+import os
 from functools import lru_cache
 from typing import Iterator
 
-from langchain_pinecone import Pinecone
+from pinecone import Pinecone
+from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
 from langchain_core.runnables import RunnableLambda
@@ -219,9 +221,64 @@ SYSTEM_PROMPT = (
 
 
 @lru_cache
-def get_vectorstore():
-    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", task_type="retrieval_query")
-    return Pinecone(index_name="vetted-vertical", embedding=embeddings)
+def get_embeddings():
+    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", task_type="retrieval_query")
+
+
+@lru_cache
+def get_pinecone_client():
+    return Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+
+
+def vector_search(query: str, coach: str | None) -> list[Document]:
+    """Top CANDIDATE_K chunks by embedding similarity, optionally for one coach."""
+    result = get_pinecone_client().Index("vetted-vertical").query(
+        vector=get_embeddings().embed_query(query),
+        top_k=CANDIDATE_K,
+        filter={"coach": coach} if coach else None,
+        include_metadata=True,
+    )
+    return [
+        Document(
+            page_content=match.metadata["text"],
+            metadata={k: v for k, v in match.metadata.items() if k != "text"},
+        )
+        for match in result.matches
+    ]
+
+
+# Vector search is a fast, rough first pass, so it casts a wide net; the
+# reranker reads each candidate against the question and keeps the best.
+RERANK_MODEL = "bge-reranker-v2-m3"
+CANDIDATE_K = 50
+FINAL_K = 15
+
+
+def rerank(query: str, docs: list) -> list:
+    """Best FINAL_K docs for the query, most relevant first.
+
+    Fails open: if reranking errors (e.g. a 429 from the monthly quota), fall
+    back to vector order, so an outage costs some quality but not the answer.
+    """
+    if not docs:
+        return docs
+    try:
+        result = get_pinecone_client().inference.rerank(
+            model=RERANK_MODEL,
+            query=query,
+            # The title gives the reranker context a mid-video chunk often lacks.
+            documents=[
+                {"id": str(i), "text": f"{doc.metadata.get('video_title', '')}\n{doc.page_content}"}
+                for i, doc in enumerate(docs)
+            ],
+            top_n=FINAL_K,
+            rank_fields=["text"],
+            return_documents=False,
+        )
+        return [docs[item.index] for item in result.data]
+    except Exception as e:
+        logging.getLogger("dunkbot").warning("rerank failed, using vector order: %r", e)
+        return docs[:FINAL_K]
 
 
 @lru_cache
@@ -232,11 +289,9 @@ def get_rag_chain(coach: str | None):
     per query; under a concurrent web server that lets one request's filter
     leak into another's, so each filter gets its own chain instead.
     """
-    search_kwargs: dict = {"k": 15}
-    if coach:
-        search_kwargs["filter"] = {"coach": coach}
-    retriever = get_vectorstore().as_retriever(search_kwargs=search_kwargs)
-    retriever_with_timestamps = retriever | RunnableLambda(add_timestamp_display)
+    retriever_with_rerank = RunnableLambda(
+        lambda query: add_timestamp_display(rerank(query, vector_search(query, coach)))
+    )
 
     llm = ChatGoogleGenerativeAI(model="gemini-3.7-flash", temperature=0.2)
 
@@ -249,7 +304,7 @@ def get_rag_chain(coach: str | None):
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ])
-    history_aware_retriever = create_history_aware_retriever(llm, retriever_with_timestamps, contextualize_prompt)
+    history_aware_retriever = create_history_aware_retriever(llm, retriever_with_rerank, contextualize_prompt)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM_PROMPT),
