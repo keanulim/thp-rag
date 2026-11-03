@@ -106,7 +106,7 @@ export function Sidebar({
     <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Chats">
       <div className="sidebar-head">
         <Link to="/" className="brand" onClick={onNavigate}>
-          Dunk Bot
+          Vert Bot
         </Link>
         <button className="icon-btn" onClick={onToggle} aria-label="Close sidebar">
           <Icon name="sidebar" size={18} />
